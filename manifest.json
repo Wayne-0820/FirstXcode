@@ -1,0 +1,16 @@
+{
+  "name": "問道",
+  "short_name": "問道",
+  "description": "一款修真放置遊戲：打坐、積蓄靈氣、突破境界",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0e1015",
+  "theme_color": "#0e1015",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

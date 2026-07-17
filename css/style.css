@@ -1,0 +1,1306 @@
+/* ============================================================
+   放置礦坑 —— 樣式
+   手機優先。桌機上會置中成一個手機寬度的直條。
+   ============================================================ */
+
+:root {
+  --bg:        #0e1015;
+  --panel:     #171a22;
+  --panel-hi:  #1e222c;
+  --line:      #272c38;
+  --text:      #e8eaf0;
+  --text-dim:  #8b93a7;
+  --gold:      #f5c451;
+  --gold-dark: #b8860b;
+  --green:     #4ade80;
+  --jade:      #5eead4;
+  --violet:    #a78bfa;
+  --violet-dk: #6d3fc4;
+  --radius:    14px;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+
+  /* 拿掉 iOS 點擊時那個藍色方框閃爍 —— 連點時會閃到眼花 */
+  -webkit-tap-highlight-color: transparent;
+}
+
+html, body {
+  height: 100%;
+  background: var(--bg);
+}
+
+body {
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+               "PingFang TC", "Noto Sans CJK TC", "Microsoft JhengHei", sans-serif;
+
+  /* 快速連點時不要選到文字、不要跳出「拷貝／查詢」的放大鏡 */
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+
+  /* 消除點兩下縮放造成的 300ms 延遲 —— 對點擊遊戲這是必需品，不是優化 */
+  touch-action: manipulation;
+
+  /* 擋掉 Safari 的橡皮筋回彈和下拉重新整理：
+     玩到一半手指往下滑就整頁重載，體驗會很糟 */
+  overscroll-behavior: none;
+}
+
+#app {
+  position: relative; /* 機緣要以這裡為基準定位，才不會在桌機上飄到版面外 */
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh; /* dvh 會跟著 Safari 網址列收合而變，避免底部被切掉 */
+  max-width: 480px;
+  margin: 0 auto;
+
+  /* 內容推回安全區，避開瀏海與底部的 Home Indicator */
+  padding-top:    env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left:   env(safe-area-inset-left);
+  padding-right:  env(safe-area-inset-right);
+}
+
+/* --- 標題 ------------------------------------------------- */
+
+#header {
+  padding: 10px 16px 2px;
+  text-align: center;
+}
+
+#game-title {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 4px;
+  color: var(--text-dim);
+}
+
+#badges {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  margin-top: 5px;
+}
+
+/* 境界是這個遊戲的身分認同，放在最上面 */
+#realm-badge {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 3px 14px;
+  border: 1px solid rgba(94, 234, 212, 0.28);
+  border-radius: 999px;
+  background: rgba(94, 234, 212, 0.06);
+}
+
+/* 悟性：第二種貨幣，永久不滅，所以跟境界並排放在身分列 */
+#insight-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 11px;
+  border: 1px solid rgba(167, 139, 250, 0.28);
+  border-radius: 999px;
+  background: rgba(167, 139, 250, 0.06);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--violet);
+  font-variant-numeric: tabular-nums;
+}
+
+#realm-name {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--jade);
+  letter-spacing: 3px;
+}
+
+#realm-mult {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+#realm-mult:empty { display: none; }
+
+/* --- 數字 ------------------------------------------------- */
+
+#counter {
+  padding: 18px 16px 14px;
+  text-align: center;
+}
+
+#money-line {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 8px;
+}
+
+#currency-symbol { font-size: 28px; }
+
+#money {
+  font-size: 44px;
+  font-weight: 700;
+  letter-spacing: -1px;
+  color: var(--gold);
+
+  /* 等寬數字：數字跳動時寬度不會抖來抖去 */
+  font-variant-numeric: tabular-nums;
+}
+
+#currency-name {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+
+#rate {
+  font-size: 15px;
+  color: var(--green);
+  margin-top: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- 機緣的增益 ------------------------------------------- */
+
+#buffs {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 5px;
+  margin-top: 7px;
+}
+#buffs:empty { display: none; }
+
+.buff-chip {
+  padding: 3px 9px;
+  border: 1px solid rgba(245, 196, 81, 0.4);
+  border-radius: 999px;
+  background: rgba(245, 196, 81, 0.1);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--gold);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 減益要一眼看出來不是好事 */
+.buff-chip.bad {
+  border-color: rgba(248, 113, 113, 0.45);
+  background: rgba(248, 113, 113, 0.1);
+  color: #f87171;
+}
+
+/* --- 機緣本體 --------------------------------------------- */
+
+#fortune {
+  position: absolute;
+  transform: translate(-50%, -50%) scale(0);
+  width: 62px;
+  height: 62px;
+  border: 2px solid #d8ccff;
+  border-radius: 50%;
+  /* 刻意用不透明的顏色。半透明的話，它飄到金色的打坐鈕上時
+     底下的亮金會透上來、整顆糊掉 —— 而機緣是限時的，
+     沒看到就等於沒有。 */
+  background: radial-gradient(circle at 40% 35%, #b9a3ff, #5b2fb0);
+  box-shadow: 0 0 26px 6px rgba(167, 139, 250, 0.55);
+  cursor: pointer;
+  touch-action: manipulation;
+  opacity: 0;
+  pointer-events: none;
+  transition: transform 0.25s cubic-bezier(.34,1.56,.64,1), opacity 0.25s;
+  z-index: 5; /* 低於彈窗（10）—— 有彈窗擋著時不該還能點到 */
+}
+
+#fortune.show {
+  transform: translate(-50%, -50%) scale(1);
+  opacity: 1;
+  pointer-events: auto;
+  animation: fortune-pulse 1.4s ease-in-out infinite;
+}
+
+#fortune-icon {
+  font-size: 30px;
+  line-height: 62px;
+  display: block;
+  /* 轉起來，讓它在畫面上很難被忽略 */
+  animation: fortune-spin 3.5s linear infinite;
+}
+
+@keyframes fortune-pulse {
+  0%, 100% { box-shadow: 0 0 20px 4px rgba(167, 139, 250, 0.35); }
+  50%      { box-shadow: 0 0 34px 10px rgba(167, 139, 250, 0.6); }
+}
+
+@keyframes fortune-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* --- 領到機緣的提示 --------------------------------------- */
+
+#toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(76px + env(safe-area-inset-bottom));
+  transform: translate(-50%, 14px);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 300px;
+  padding: 11px 16px;
+  border: 1px solid var(--violet);
+  border-radius: 999px;
+  background: var(--panel);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s, transform 0.25s;
+  z-index: 15;
+}
+
+#toast.show {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+#toast.bad { border-color: #f87171; }
+
+#toast-icon { font-size: 24px; flex: 0 0 auto; }
+#toast-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+
+#toast-title {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--violet);
+  letter-spacing: 1px;
+}
+#toast.bad #toast-title { color: #f87171; }
+
+#toast-body {
+  font-size: 11px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+/* --- 點擊按鈕 --------------------------------------------- */
+
+#click-area {
+  position: relative;
+  padding: 0 16px 16px;
+}
+
+#click-button {
+  width: 100%;
+  height: 92px;
+  border: none;
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, var(--gold) 0%, var(--gold-dark) 100%);
+  color: #2a1f00;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 4px;
+  font-family: inherit;
+  cursor: pointer;
+  touch-action: manipulation;
+  box-shadow: 0 4px 0 #8a6508, 0 8px 20px rgba(245, 196, 81, 0.2);
+  transition: transform 0.04s, box-shadow 0.04s;
+}
+
+/* 按下去會「陷下去」，給一點實體按鍵的回饋 */
+#click-button:active {
+  transform: translateY(4px);
+  box-shadow: 0 0 0 #8a6508, 0 2px 8px rgba(245, 196, 81, 0.15);
+}
+
+/* 點擊冒出的 "+1"。pointer-events: none 讓它不會擋住下面的按鈕 */
+#click-fx {
+  position: absolute;
+  inset: 0 16px 16px;
+  pointer-events: none;
+  overflow: hidden;
+  border-radius: var(--radius);
+}
+
+.fx {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  font-size: 20px;
+  font-weight: 800;
+  color: #fff;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+  animation: float-up 0.7s ease-out forwards;
+}
+
+@keyframes float-up {
+  0%   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -180%) scale(1.3); }
+}
+
+/* --- 突破 ------------------------------------------------- */
+
+#breakthrough-area {
+  padding: 0 16px 14px;
+}
+
+/* 刻意跟金色的打坐鈕長得完全不一樣 ——
+   一個是隨便點，一個會清空你所有的修煉設施 */
+#breakthrough-button {
+  position: relative;
+  width: 100%;
+  height: 52px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--panel);
+  overflow: hidden;
+  cursor: pointer;
+  touch-action: manipulation;
+  font-family: inherit;
+  padding: 0;
+}
+
+/* 進度條：從左邊長出來的紫色，像在蓄力。
+   刻意不加 transition —— 主迴圈每一幀本來就會重設寬度，
+   靈氣是平滑成長的，進度條自然就是平滑的。
+   加了 transition 反而只會讓它慢半拍，而且分頁切到背景時
+   會卡在動畫半路（rAF 停了就沒人再更新它）。 */
+#bt-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0;
+  background: linear-gradient(90deg, rgba(109, 63, 196, 0.35), rgba(167, 139, 250, 0.45));
+}
+
+#bt-text {
+  position: relative;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 14px;
+}
+
+#bt-label {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-dim);
+  letter-spacing: 1px;
+}
+
+#bt-right {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+#bt-progress {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 成功率：穩過的境界不顯示，有風險才出現 */
+#bt-rate {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-dim);
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: var(--bg);
+}
+#bt-rate:empty { display: none; }
+
+/* 成功率低於 75% 就轉紅，這是玩家該猶豫的訊號 */
+#bt-rate.risky, #confirm-rate.risky {
+  color: #f87171;
+  background: rgba(248, 113, 113, 0.12);
+}
+
+/* 可以突破了：整顆亮起來並且脈動，很難忽略 */
+#breakthrough-button.ready {
+  border-color: var(--violet);
+  animation: bt-pulse 1.6s ease-in-out infinite;
+}
+#breakthrough-button.ready #bt-label { color: #fff; }
+#breakthrough-button.ready #bt-progress { color: var(--violet); }
+#breakthrough-button.ready:active { transform: scale(0.99); }
+
+@keyframes bt-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(167, 139, 250, 0.0); }
+  50%      { box-shadow: 0 0 18px 2px rgba(167, 139, 250, 0.35); }
+}
+
+/* 已經到頂，沒有下一關了 */
+#breakthrough-button.maxed {
+  opacity: 0.5;
+  cursor: default;
+}
+#breakthrough-button.maxed #bt-fill {
+  background: linear-gradient(90deg, rgba(245, 196, 81, 0.25), rgba(94, 234, 212, 0.25));
+}
+#breakthrough-button.maxed #bt-label {
+  color: var(--jade);
+  letter-spacing: 4px;
+}
+
+/* --- 商店 ------------------------------------------------- */
+
+#shop {
+  flex: 1;
+  min-height: 0; /* 沒有這行，flex 子元素不會縮，捲動就失效 */
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--line);
+}
+
+/* --- 商店分頁 --------------------------------------------- */
+
+#shop-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 8px 12px 0;
+  flex: 0 0 auto;
+}
+
+/* 五個分頁要塞進 375px，字距得收緊 */
+.tab {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  padding: 8px 2px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0;
+  white-space: nowrap;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.tab.active {
+  color: var(--text);
+  border-bottom-color: var(--gold);
+}
+
+/* 有東西買得起才亮，玩家就不用一直切過去看 */
+.tab-badge {
+  display: inline-block;
+  margin-left: 3px;
+  min-width: 14px;
+  padding: 0 3px;
+  border-radius: 999px;
+  background: var(--gold);
+  color: #2a1f00;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 14px;
+  letter-spacing: 0;
+  vertical-align: middle;
+}
+
+#shop-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 34px;
+  padding: 6px 16px;
+  flex: 0 0 auto;
+}
+
+#shop-hint {
+  font-size: 11px;
+  color: var(--text-dim);
+  letter-spacing: 1px;
+}
+
+#buy-amount {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.amount-btn {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 9px;
+  border-radius: 7px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.amount-btn.active {
+  background: var(--gold);
+  border-color: var(--gold);
+  color: #2a1f00;
+}
+
+/* 三個分頁的內容區。同時只有一個沒有 .hidden。 */
+.panel {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 0 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* .panel 設了 display:flex，所以這裡要壓過它 */
+.hidden { display: none !important; }
+
+.panel-empty {
+  padding: 28px 24px;
+  text-align: center;
+  font-size: 12px;
+  line-height: 1.9;
+  color: var(--text-dim);
+}
+
+/* --- 產生器每一列 ----------------------------------------- */
+
+.gen-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  padding: 11px 13px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--text);
+  font-family: inherit;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: background 0.12s, border-color 0.12s, opacity 0.12s;
+}
+
+/* 買得起：邊框亮起來，一眼就知道現在能買什麼 */
+.gen-row.affordable {
+  border-color: var(--gold-dark);
+  background: var(--panel-hi);
+}
+.gen-row.affordable:active {
+  transform: scale(0.985);
+}
+
+/* 買不起：整列變暗，但仍然看得到內容（讓玩家有目標感） */
+.gen-row.locked {
+  opacity: 0.45;
+}
+
+.gen-icon {
+  font-size: 30px;
+  width: 40px;
+  text-align: center;
+  flex: 0 0 auto;
+}
+
+.gen-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.gen-line1 {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.gen-name {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.gen-owned {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--gold);
+  font-variant-numeric: tabular-nums;
+}
+
+.gen-desc {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin: 2px 0 5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.gen-line3 {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.gen-cost { font-weight: 600; }
+.gen-row.affordable .gen-cost { color: var(--gold); }
+.gen-rate { color: var(--text-dim); }
+
+/* --- 功法／法寶的品項列 ----------------------------------- */
+
+.item-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  padding: 11px 13px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--text);
+  font-family: inherit;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: background 0.12s, border-color 0.12s, opacity 0.12s;
+}
+
+.item-row.affordable {
+  border-color: var(--gold-dark);
+  background: var(--panel-hi);
+}
+.item-row.affordable:active { transform: scale(0.985); }
+.item-row.locked { opacity: 0.45; }
+
+.item-icon {
+  font-size: 26px;
+  width: 36px;
+  text-align: center;
+  flex: 0 0 auto;
+}
+
+.item-main { flex: 1; min-width: 0; }
+
+.item-name {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.item-desc {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+
+.item-cost {
+  flex: 0 0 auto;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+.item-row.affordable .item-cost { color: var(--gold); }
+
+/* 法寶用悟性買，價格就用悟性的紫色，跟靈氣的金色分開 */
+#panel-trea .item-row.affordable { border-color: var(--violet-dk); }
+#panel-trea .item-row.affordable .item-cost { color: var(--violet); }
+
+/* --- 商店的小節標題（法寶分頁同時裝符籙和法寶）------------- */
+
+.section-head {
+  padding: 6px 4px 2px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-dim);
+  letter-spacing: 2px;
+}
+.section-head:first-child { padding-top: 0; }
+
+.cons-count {
+  margin-left: 6px;
+  font-size: 13px;
+  color: var(--violet);
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- 歷練 ------------------------------------------------- */
+
+#battle-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 2px 4px 0;
+}
+
+#battle-layer {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--jade);
+  letter-spacing: 1px;
+}
+
+#battle-power {
+  font-size: 12px;
+  font-weight: 700;
+  color: #f87171;
+  font-variant-numeric: tabular-nums;
+}
+
+#battle-card {
+  padding: 20px 16px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  text-align: center;
+}
+
+#enemy-icon {
+  font-size: 46px;
+  line-height: 1.2;
+  /* 微微上下浮動，讓「它還活著、還在打」有點動感 */
+  animation: bob 2.2s ease-in-out infinite;
+}
+
+@keyframes bob {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-5px); }
+}
+
+#enemy-name {
+  font-size: 17px;
+  font-weight: 700;
+  margin: 4px 0 12px;
+  letter-spacing: 2px;
+}
+
+/* 魔王要一眼看出來跟小怪不一樣 */
+#enemy-name.boss {
+  color: #f87171;
+  text-shadow: 0 0 16px rgba(248, 113, 113, 0.35);
+}
+#enemy-name.boss::after {
+  content: " 魔王";
+  font-size: 10px;
+  vertical-align: super;
+  letter-spacing: 0;
+}
+
+#enemy-hpbar {
+  height: 10px;
+  border-radius: 999px;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+/* 血條不加 transition：主迴圈每幀都會重設寬度，
+   血量本來就是平滑掉的，加了反而慢半拍。 */
+#enemy-hpfill {
+  height: 100%;
+  width: 100%;
+  background: linear-gradient(90deg, #4ade80, #22c55e);
+  border-radius: 999px;
+}
+#enemy-hpfill.boss {
+  background: linear-gradient(90deg, #f87171, #dc2626);
+}
+
+#enemy-hptext {
+  margin-top: 7px;
+  font-size: 11px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+#boss-timer {
+  margin-top: 8px;
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--gold);
+  font-variant-numeric: tabular-nums;
+}
+#boss-timer:empty { display: none; }
+
+/* 卡關時直接講清楚差多少，不要讓玩家對著血條乾瞪眼 */
+#battle-stuck {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(248, 113, 113, 0.1);
+  font-size: 11px;
+  line-height: 1.6;
+  color: #f87171;
+}
+#battle-stuck:empty { display: none; }
+
+#battle-progress {
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+#materials-head {
+  padding: 8px 4px 0;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-dim);
+  letter-spacing: 2px;
+}
+
+#materials-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.mat-chip {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+  font-size: 11px;
+}
+
+.mat-name { color: var(--text-dim); }
+.mat-qty {
+  font-weight: 700;
+  color: var(--jade);
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- 靈寵 ------------------------------------------------- */
+
+.pet-row {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 11px 13px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  opacity: 0.5;
+}
+
+.pet-row.owned { opacity: 1; }
+
+/* 帶在身上的那一隻要一眼認出來 */
+.pet-row.equipped {
+  border-color: var(--jade);
+  background: rgba(94, 234, 212, 0.05);
+}
+
+.pet-icon {
+  font-size: 30px;
+  width: 38px;
+  text-align: center;
+  flex: 0 0 auto;
+}
+
+.pet-main { flex: 1; min-width: 0; }
+
+.pet-line1 {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+}
+
+.pet-name { font-size: 15px; font-weight: 700; }
+
+.pet-lv {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--jade);
+  font-variant-numeric: tabular-nums;
+}
+
+.pet-desc {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin: 2px 0 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pet-effect {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--violet);
+}
+
+.pet-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+.pet-equip, .pet-feed {
+  min-width: 74px;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: none;
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.pet-equip:disabled, .pet-feed:disabled { cursor: default; }
+
+.pet-equip.can, .pet-feed.can {
+  border-color: var(--gold-dark);
+  color: var(--gold);
+}
+.pet-equip.can:active, .pet-feed.can:active { transform: scale(0.96); }
+
+.pet-equip.on {
+  border-color: var(--jade);
+  background: rgba(94, 234, 212, 0.12);
+  color: var(--jade);
+}
+
+/* --- 渡劫符的勾選 ----------------------------------------- */
+
+#confirm-talisman {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: none;
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+#confirm-talisman.on {
+  border-color: var(--gold);
+  background: rgba(245, 196, 81, 0.08);
+  color: var(--gold);
+}
+
+#talisman-box {
+  flex: 0 0 auto;
+  width: 17px;
+  height: 17px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  font-size: 11px;
+  line-height: 15px;
+  text-align: center;
+}
+
+#confirm-talisman.on #talisman-box {
+  border-color: var(--gold);
+  background: var(--gold);
+  color: #2a1f00;
+}
+
+/* --- 頁尾 ------------------------------------------------- */
+
+#footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px 10px;
+  border-top: 1px solid var(--line);
+  flex: 0 0 auto;
+}
+
+/* 版本標記：讓你一眼分得出手機上是不是舊的快取版本 */
+#version {
+  font-size: 10px;
+  color: var(--line);
+  letter-spacing: 1px;
+}
+
+#save-status {
+  font-size: 11px;
+  color: var(--green);
+  opacity: 0;
+  transition: opacity 0.25s;
+  margin-left: auto;
+  margin-right: 10px;
+}
+#save-status.show { opacity: 1; }
+
+#reset-button, #transfer-button {
+  border: none;
+  background: none;
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: 11px;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 4px;
+}
+
+/* --- 搬存檔 ----------------------------------------------- */
+
+#transfer-text {
+  width: 100%;
+  height: 90px;
+  margin: 14px 0 8px;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--bg);
+  color: var(--text-dim);
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 10px;
+  line-height: 1.5;
+  resize: none;
+  /* 這裡是唯一需要能選取文字的地方 —— body 上關掉了，這裡要開回來 */
+  user-select: text;
+  -webkit-user-select: text;
+  -webkit-touch-callout: default;
+}
+
+#transfer-hint {
+  min-height: 16px;
+  margin-bottom: 12px;
+  font-size: 11px;
+  font-weight: 600;
+}
+#transfer-hint.ok  { color: var(--green); }
+#transfer-hint.bad { color: #f87171; }
+
+#transfer-close {
+  width: 100%;
+  margin-top: 8px;
+}
+
+/* --- 彈窗（離線結算 / 突破確認 / 突破成功 共用） ----------- */
+
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.78);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s;
+  z-index: 10;
+}
+
+.modal.show {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.modal-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 26px 22px 20px;
+  text-align: center;
+  max-width: 320px;
+  width: 100%;
+}
+
+.modal-title {
+  font-size: 19px;
+  font-weight: 700;
+  margin-bottom: 10px;
+  letter-spacing: 2px;
+}
+
+.modal-body {
+  font-size: 13px;
+  color: var(--text-dim);
+  line-height: 1.7;
+}
+
+.modal-figure {
+  font-size: 30px;
+  font-weight: 800;
+  color: var(--gold);
+  margin: 12px 0 20px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 掛機打怪的成果，附在離線結算下面 */
+#offline-combat {
+  margin: -8px 0 18px;
+  padding: 10px 12px;
+  border-radius: 9px;
+  background: var(--bg);
+  font-size: 11px;
+  line-height: 1.9;
+  color: var(--jade);
+}
+#offline-combat:empty { display: none; }
+
+.modal-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-primary {
+  flex: 1;
+  width: 100%;
+  padding: 13px;
+  border: none;
+  border-radius: 11px;
+  background: var(--gold);
+  color: #2a1f00;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.btn-ghost {
+  flex: 1;
+  padding: 13px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: none;
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+/* --- 突破確認 --------------------------------------------- */
+
+#confirm-transition {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin: 14px 0 16px;
+  font-size: 19px;
+  font-weight: 700;
+}
+
+#confirm-from { color: var(--text-dim); }
+#confirm-arrow { color: var(--violet); font-size: 15px; }
+#confirm-to { color: var(--jade); letter-spacing: 2px; }
+
+#confirm-costs {
+  list-style: none;
+  text-align: left;
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.9;
+  margin-bottom: 18px;
+  padding: 11px 13px;
+  border-radius: 10px;
+  background: var(--bg);
+}
+
+#confirm-costs li::before {
+  content: "· ";
+  color: var(--text-dim);
+}
+
+/* 「得到什麼」用亮色，跟上面「失去什麼」分開 */
+#confirm-gain, #confirm-insight {
+  color: var(--violet);
+  font-weight: 600;
+}
+
+#confirm-rate {
+  display: inline-block;
+  margin-bottom: 14px;
+  padding: 3px 12px;
+  border-radius: 999px;
+  background: var(--bg);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-dim);
+}
+
+/* --- 突破成功 --------------------------------------------- */
+
+#realmup-eyebrow {
+  font-size: 11px;
+  color: var(--violet);
+  letter-spacing: 5px;
+}
+
+#realmup-name {
+  font-size: 40px;
+  font-weight: 800;
+  color: var(--jade);
+  letter-spacing: 6px;
+  margin: 6px 0 10px;
+  text-shadow: 0 0 24px rgba(94, 234, 212, 0.3);
+}
+
+#realmup-note {
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.8;
+}
+
+#realmup-modal .modal-figure {
+  color: var(--violet);
+  font-size: 22px;
+  margin-bottom: 6px;
+}
+
+#realmup-insight {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--violet);
+  margin-bottom: 18px;
+}
+#realmup-insight:empty { display: none; }
+
+/* --- 渡劫失敗 --------------------------------------------- */
+
+#fail-eyebrow {
+  font-size: 11px;
+  color: #f87171;
+  letter-spacing: 5px;
+}
+
+#fail-name {
+  font-size: 34px;
+  font-weight: 800;
+  color: var(--text-dim);
+  letter-spacing: 6px;
+  margin: 6px 0 12px;
+  /* 沒到手的境界，用刪除線講完整個故事 */
+  text-decoration: line-through;
+  text-decoration-color: rgba(248, 113, 113, 0.65);
+  text-decoration-thickness: 3px;
+}
+
+#fail-modal .modal-figure {
+  color: #f87171;
+  font-size: 22px;
+}

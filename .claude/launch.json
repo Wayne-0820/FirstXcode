@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "idle-game",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["/Users/Wayne/Work/firstxcode/serve.py"],
+      "port": 8000
+    }
+  ]
+}

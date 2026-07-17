@@ -1,0 +1,1234 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<title>經濟計算驗算</title>
+<style>
+  body { font-family: -apple-system, "PingFang TC", sans-serif;
+         background: #0e1015; color: #e8eaf0; padding: 24px; line-height: 1.6; }
+  h1 { font-size: 18px; margin-bottom: 4px; }
+  .sub { color: #8b93a7; font-size: 13px; margin-bottom: 20px; }
+  #summary { font-size: 16px; font-weight: 700; padding: 12px 14px;
+             border-radius: 10px; margin-bottom: 16px; }
+  .ok   { background: #12301f; color: #4ade80; }
+  .bad  { background: #3a1418; color: #f87171; }
+  .case { font-size: 13px; padding: 5px 0; border-bottom: 1px solid #272c38;
+          font-variant-numeric: tabular-nums; }
+  .pass::before { content: "✓ "; color: #4ade80; }
+  .fail::before { content: "✗ "; color: #f87171; }
+  .fail { color: #f87171; }
+  .detail { color: #8b93a7; font-size: 12px; padding-left: 16px; }
+</style>
+</head>
+<body>
+
+<h1>經濟計算驗算</h1>
+<div class="sub">
+  economy.js 全是純函式，所以可以直接驗算。<br>
+  改過 economy.js 之後開這頁看一眼，確定沒把數學弄壞。
+</div>
+<div id="summary"></div>
+<div id="results"></div>
+
+<script src="js/content.js"></script>
+<script src="js/economy.js"></script>
+<script src="js/state.js"></script>
+<script>
+let passed = 0, failed = 0;
+const out = document.getElementById("results");
+
+function log(ok, name, detail) {
+  const d = document.createElement("div");
+  d.className = "case " + (ok ? "pass" : "fail");
+  d.textContent = name;
+  out.appendChild(d);
+  if (detail && !ok) {
+    const x = document.createElement("div");
+    x.className = "detail";
+    x.textContent = detail;
+    out.appendChild(x);
+  }
+  ok ? passed++ : failed++;
+}
+
+function eq(name, actual, expected, tolerance = 1e-6) {
+  const ok = Math.abs(actual - expected) <= tolerance * Math.max(1, Math.abs(expected));
+  log(ok, name, `得到 ${actual}，預期 ${expected}`);
+}
+
+function is(name, actual, expected) {
+  log(actual === expected, name, `得到 ${JSON.stringify(actual)}，預期 ${JSON.stringify(expected)}`);
+}
+
+// 測試用的假產生器：數字挑好算的
+const G = { baseCost: 100, costGrowth: 1.15, baseRate: 1 };
+const FLAT = { baseCost: 10, costGrowth: 1, baseRate: 1 };  // 不漲價，會踩到除以零
+
+// --- costOf --------------------------------------------------
+eq("costOf：第 1 個 = baseCost", Economy.costOf(G, 0), 100);
+eq("costOf：已有 1 個 → ×1.15", Economy.costOf(G, 1), 115);
+eq("costOf：已有 5 個 → ×1.15^5", Economy.costOf(G, 5), 100 * Math.pow(1.15, 5));
+
+// --- costOfN：等比級數和（最容易寫錯的地方）------------------
+eq("costOfN：買 0 個 = 0", Economy.costOfN(G, 0, 0), 0);
+eq("costOfN：買 1 個 = costOf", Economy.costOfN(G, 0, 1), Economy.costOf(G, 0));
+eq("costOfN：買 2 個 = 前兩個相加", Economy.costOfN(G, 0, 2), 100 + 115);
+eq("costOfN：從第 3 個起買 2 個",
+   Economy.costOfN(G, 2, 2), Economy.costOf(G, 2) + Economy.costOf(G, 3));
+
+// 這條是關鍵：跟「一個一個加起來」比對。
+// 如果有人把 costOfN 寫成 costOf × n，這裡就會炸。
+(() => {
+  for (const [owned, n] of [[0, 10], [3, 25], [17, 100], [50, 250]]) {
+    let sum = 0;
+    for (let i = 0; i < n; i++) sum += Economy.costOf(G, owned + i);
+    eq(`costOfN：公式 = 逐個累加（已有 ${owned} 個，買 ${n} 個）`,
+       Economy.costOfN(G, owned, n), sum, 1e-9);
+  }
+})();
+
+eq("costOfN：growth = 1 不會除以零", Economy.costOfN(FLAT, 5, 7), 70);
+
+// --- maxAffordable：反函式 -----------------------------------
+is("maxAffordable：沒錢 = 0", Economy.maxAffordable(G, 0, 0), 0);
+is("maxAffordable：錢不夠買第 1 個 = 0", Economy.maxAffordable(G, 0, 99), 0);
+is("maxAffordable：剛好買得起 1 個", Economy.maxAffordable(G, 0, 100), 1);
+is("maxAffordable：差 1 塊買不到第 2 個", Economy.maxAffordable(G, 0, 214), 1);
+is("maxAffordable：剛好買得起 2 個", Economy.maxAffordable(G, 0, 215), 2);
+is("maxAffordable：growth = 1", Economy.maxAffordable(FLAT, 0, 95), 9);
+is("maxAffordable：負的錢 = 0", Economy.maxAffordable(G, 0, -50), 0);
+
+// 反函式和 costOfN 必須完全自洽：
+// 買得起 n 個，而且真的買不起 n+1 個。這條測完就不用擔心買到負債。
+(() => {
+  let allOk = true, note = "";
+  for (const owned of [0, 1, 7, 40, 200]) {
+    for (const money of [0, 1, 99, 100, 1e3, 1e5, 1e9, 1e15, 1e30]) {
+      const n = Economy.maxAffordable(G, owned, money);
+      if (n < 0) { allOk = false; note = `n 是負的：owned=${owned} money=${money}`; break; }
+      if (n > 0 && Economy.costOfN(G, owned, n) > money) {
+        allOk = false; note = `買不起卻說買得起：owned=${owned} money=${money} n=${n}`; break;
+      }
+      if (Economy.costOfN(G, owned, n + 1) <= money) {
+        allOk = false; note = `還能多買一個卻沒算到：owned=${owned} money=${money} n=${n}`; break;
+      }
+    }
+    if (!allOk) break;
+  }
+  log(allOk, "maxAffordable 與 costOfN 完全自洽（掃過各種持有數與金額）", note);
+})();
+
+// --- 產量 ----------------------------------------------------
+eq("rateOf：0 個 = 0", Economy.rateOf(G, 0), 0);
+eq("rateOf：12 個", Economy.rateOf(G, 12), 12);
+
+// 用 State.create() 當底，欄位才不會漏 —— 手刻的假 state 很容易忘記加新欄位，
+// 然後測試就在測一個現實中不存在的狀態。
+const blankState = (realm = 0) => {
+  const s = State.create();
+  s.realm = realm;
+  return s;
+};
+
+(() => {
+  const state = blankState();
+  eq("totalRate：全空 = 0", Economy.totalRate(state), 0);
+
+  const first = CONTENT.generators[0];
+  state.owned[first.id] = 10;
+  eq("totalRate：只有第一種 10 個（凡人 ×1）", Economy.totalRate(state), 10 * first.baseRate);
+
+  // 境界倍率要真的乘進去 —— 這是整個突破系統的回報
+  const last = CONTENT.realms.length - 1;
+  state.realm = last;
+  eq(`totalRate：同樣的設施在最高境界（×${CONTENT.realms[last].multiplier}）`,
+     Economy.totalRate(state), 10 * first.baseRate * CONTENT.realms[last].multiplier);
+})();
+
+// --- 境界 ----------------------------------------------------
+is("realmAt：0 = 第一個境界", Economy.realmAt(0).name, CONTENT.realms[0].name);
+is("realmAt：負的索引夾到 0", Economy.realmAt(-3).name, CONTENT.realms[0].name);
+is("realmAt：超出範圍夾到最後一個",
+   Economy.realmAt(9999).name, CONTENT.realms[CONTENT.realms.length - 1].name);
+is("realmAt：undefined 不會爆（存檔壞掉時）", Economy.realmAt(undefined).name, CONTENT.realms[0].name);
+is("realmAt：NaN 不會爆", Economy.realmAt(NaN).name, CONTENT.realms[0].name);
+
+is("nextRealm：凡人的下一關", Economy.nextRealm(blankState(0)).name, CONTENT.realms[1].name);
+is("nextRealm：最高境界沒有下一關 = null",
+   Economy.nextRealm(blankState(CONTENT.realms.length - 1)), null);
+
+(() => {
+  const need = CONTENT.realms[1].requirement;
+  const s = blankState(0);
+
+  s.money = need - 1;
+  is("canBreakthrough：差 1 點靈氣 → 不行", Economy.canBreakthrough(s), false);
+  s.money = need;
+  is("canBreakthrough：剛好夠 → 可以", Economy.canBreakthrough(s), true);
+  s.money = need * 100;
+  is("canBreakthrough：遠遠超過 → 可以", Economy.canBreakthrough(s), true);
+
+  s.money = 0;
+  eq("breakthroughProgress：0 靈氣 = 0", Economy.breakthroughProgress(s), 0);
+  s.money = need / 2;
+  eq("breakthroughProgress：一半 = 0.5", Economy.breakthroughProgress(s), 0.5);
+  s.money = need * 5;
+  eq("breakthroughProgress：超過也不會大於 1", Economy.breakthroughProgress(s), 1);
+
+  const maxed = blankState(CONTENT.realms.length - 1);
+  maxed.money = 1e30;
+  is("canBreakthrough：最高境界不能再突破", Economy.canBreakthrough(maxed), false);
+  eq("breakthroughProgress：最高境界 = 1", Economy.breakthroughProgress(maxed), 1);
+})();
+
+// --- 突破：成功 ----------------------------------------------
+// rng 是注入的，所以隨機性測得到。always(0) = 必定成功、always(0.999) = 幾乎必定失敗。
+const always = (v) => () => v;
+
+(() => {
+  const s = blankState(0);
+  const first = CONTENT.generators[0];
+  s.owned[first.id] = 30;
+  s.techniques[CONTENT.techniques[0].id] = true;
+  s.money = CONTENT.realms[1].requirement;
+  s.totalEarned = 99999;
+  s.insight = 7;
+
+  const got = State.breakthrough(s, always(0));
+  log(got && got.success === true && got.realm.name === CONTENT.realms[1].name,
+      "breakthrough 成功：回傳 success 與新境界", `得到 ${JSON.stringify(got && got.realm && got.realm.name)}`);
+  is("breakthrough 成功：境界 +1", s.realm, 1);
+  is("breakthrough 成功：靈氣歸零", s.money, 0);
+  is("breakthrough 成功：修煉設施散去", s.owned[first.id], 0);
+  is("breakthrough 成功：功法也散去", Object.keys(s.techniques).length, 0);
+  is("breakthrough 成功：突破次數 +1", s.breakthroughs, 1);
+  is("breakthrough 成功：悟性有入帳", s.insight > 7, true);
+  is("breakthrough 成功：歷代累計不歸零（那是總戰績）", s.totalEarned, 99999);
+
+  is("breakthrough：靈氣不足時回傳 null", State.breakthrough(s, always(0)), null);
+  is("breakthrough：回傳 null 時境界不變", s.realm, 1);
+})();
+
+// --- 突破：失敗 ----------------------------------------------
+// Wayne 選的規則：失敗只損失靈氣，境界、設施、功法全部保留。
+(() => {
+  const s = blankState(9); // 渡劫，成功率 0.55
+  const first = CONTENT.generators[0];
+  s.owned[first.id] = 30;
+  s.techniques[CONTENT.techniques[0].id] = true;
+  s.money = CONTENT.realms[10].requirement;
+  s.insight = 5;
+
+  const got = State.breakthrough(s, always(0.999));
+  log(got && got.success === false, "breakthrough 失敗：回傳 success = false", JSON.stringify(got));
+  is("breakthrough 失敗：靈氣歸零（這是代價）", s.money, 0);
+  is("breakthrough 失敗：境界不變", s.realm, 9);
+  is("breakthrough 失敗：修煉設施保留", s.owned[first.id], 30);
+  is("breakthrough 失敗：功法保留", Object.keys(s.techniques).length, 1);
+  is("breakthrough 失敗：悟性不變", s.insight, 5);
+  is("breakthrough 失敗：失敗次數 +1", s.failures, 1);
+})();
+
+// 成功率 100% 的境界，rng 回傳 0.999 也必須成功
+(() => {
+  const s = blankState(0);
+  s.money = CONTENT.realms[1].requirement;
+  const got = State.breakthrough(s, always(0.9999999));
+  log(got && got.success === true,
+      "breakthrough：成功率 100% 時擲出最差值也不能失敗", JSON.stringify(got));
+})();
+
+// --- 渡劫成功率 ----------------------------------------------
+(() => {
+  const s = blankState(0);
+  eq("successRate：前期境界穩過", Economy.successRate(s), 1);
+
+  const risky = blankState(9); // 渡劫
+  eq("successRate：渡劫的基礎成功率", Economy.successRate(risky), CONTENT.realms[10].successRate);
+
+  // 法寶會往上加
+  const trib = CONTENT.treasures.filter((b) => b.effect === "tribulation");
+  risky.treasures[trib[0].id] = true;
+  eq("successRate：法寶加成有生效",
+     Economy.successRate(risky), CONTENT.realms[10].successRate + trib[0].value);
+
+  // 全部堆上去也不能超過 100%
+  for (const b of trib) risky.treasures[b.id] = true;
+  const capped = Economy.successRate(risky);
+  log(capped <= 1, "successRate：疊滿法寶也不會超過 100%", "得到 " + capped);
+
+  const maxed = blankState(CONTENT.realms.length - 1);
+  eq("successRate：最高境界沒有下一關 = 1", Economy.successRate(maxed), 1);
+})();
+
+// --- 悟性 ----------------------------------------------------
+(() => {
+  const s = blankState(0);
+  const need = CONTENT.realms[1].requirement;
+  const base = CONTENT.realms[1].insight;
+
+  s.money = need;
+  is("insightGain：剛好達標拿到基礎值", Economy.insightGain(s), base);
+
+  // 開根號遞減：囤 4 倍靈氣只換到 2 倍悟性
+  s.money = need * 4;
+  is("insightGain：囤 4 倍靈氣 → 2 倍悟性（開根號遞減）", Economy.insightGain(s), base * 2);
+  s.money = need * 100;
+  is("insightGain：囤 100 倍 → 10 倍", Economy.insightGain(s), base * 10);
+
+  // 囤得少不會扣，也不會是 0
+  s.money = need / 2;
+  is("insightGain：不足門檻時不會低於基礎值", Economy.insightGain(s), base);
+
+  const maxed = blankState(CONTENT.realms.length - 1);
+  is("insightGain：最高境界 = 0", Economy.insightGain(maxed), 0);
+})();
+
+// --- 功法 ----------------------------------------------------
+(() => {
+  const s = blankState(0);
+  const f = CONTENT.techniques.find((x) => x.target === "click");
+
+  eq("techniqueMult：沒買 = 1", Economy.techniqueMult(s, "click"), 1);
+  s.techniques[f.id] = true;
+  eq("techniqueMult：買了就生效", Economy.techniqueMult(s, "click"), f.multiplier);
+  eq("clickPower：功法有乘進去", Economy.clickPower(s), CONTENT.clickPower * f.multiplier);
+
+  // 上架條件：要先擁有足夠的加成目標
+  const gf = CONTENT.techniques.find((x) => x.requireOwned > 0);
+  const s2 = blankState(0);
+  is("techniqueAvailable：目標數量不夠 → 不上架", Economy.techniqueAvailable(s2, gf), false);
+  s2.owned[gf.target] = gf.requireOwned;
+  is("techniqueAvailable：數量夠了 → 上架", Economy.techniqueAvailable(s2, gf), true);
+  s2.techniques[gf.id] = true;
+  is("techniqueAvailable：買過了就不再上架", Economy.techniqueAvailable(s2, gf), false);
+})();
+
+// --- 法寶 ----------------------------------------------------
+(() => {
+  const s = blankState(0);
+  const b = CONTENT.treasures.find((x) => x.effect === "allRate");
+
+  eq("treasureMult：沒買 = 1", Economy.treasureMult(s, "allRate"), 1);
+  s.treasures[b.id] = true;
+  eq("treasureMult：買了就生效", Economy.treasureMult(s, "allRate"), b.value);
+
+  // 離線上限是加法
+  const off = CONTENT.treasures.find((x) => x.effect === "offlineHours");
+  const s2 = blankState(0);
+  eq("offlineCapSeconds：基礎值", Economy.offlineCapSeconds(s2), CONTENT.offlineCapHours * 3600);
+  s2.treasures[off.id] = true;
+  eq("offlineCapSeconds：法寶加的小時數",
+     Economy.offlineCapSeconds(s2), (CONTENT.offlineCapHours + off.value) * 3600);
+  eq("clampElapsed：上限跟著法寶變長",
+     State.clampElapsed(1e9, s2), (CONTENT.offlineCapHours + off.value) * 3600);
+})();
+
+// --- 買東西 --------------------------------------------------
+(() => {
+  const s = blankState(0);
+  const f = CONTENT.techniques.find((x) => x.target === "click");
+
+  s.money = f.cost - 1;
+  is("buyTechnique：靈氣不夠買不了", State.buyTechnique(s, f.id), false);
+  is("buyTechnique：買不了就不扣錢", s.money, f.cost - 1);
+
+  s.money = f.cost + 500;
+  is("buyTechnique：夠錢就買得到", State.buyTechnique(s, f.id), true);
+  is("buyTechnique：有扣錢", s.money, 500);
+  is("buyTechnique：不能重複買", State.buyTechnique(s, f.id), false);
+  is("buyTechnique：亂給 id 不會爆", State.buyTechnique(s, "根本不存在"), false);
+
+  const b = CONTENT.treasures[0];
+  const s2 = blankState(0);
+  s2.insight = b.cost - 1;
+  is("buyTreasure：悟性不夠買不了", State.buyTreasure(s2, b.id), false);
+  s2.insight = b.cost + 2;
+  is("buyTreasure：夠悟性就買得到", State.buyTreasure(s2, b.id), true);
+  is("buyTreasure：有扣悟性", s2.insight, 2);
+  is("buyTreasure：不能重複買", State.buyTreasure(s2, b.id), false);
+  is("buyTreasure：法寶不該花到靈氣", s2.money, 0);
+})();
+
+// --- 打坐：這次修正的重點 ------------------------------------
+(() => {
+  const s = blankState(0);
+  // 前期還沒有產量，這時打坐只有定額底線撐著
+  eq("clickPower：沒產量時 = 定額底線", Economy.clickPower(s), CONTENT.clickPower);
+
+  const gen = CONTENT.generators[0];
+  s.owned[gen.id] = 100;
+  const rate = Economy.totalRate(s);
+  eq("clickPower：有產量後 = 底線 + 產量×分成",
+     Economy.clickPower(s), CONTENT.clickPower + rate * CONTENT.clickShare);
+
+  // 法寶的分成是加法
+  const sh = CONTENT.treasures.filter((b) => b.effect === "clickShare");
+  eq("clickShare：基礎值", Economy.clickShare(s), CONTENT.clickShare);
+  s.treasures[sh[0].id] = true;
+  eq("clickShare：法寶加上去", Economy.clickShare(s), CONTENT.clickShare + sh[0].value);
+  s.treasures[sh[1].id] = true;
+  eq("clickShare：兩件疊加",
+     Economy.clickShare(s), CONTENT.clickShare + sh[0].value + sh[1].value);
+})();
+
+// ★ 整個修正的意義就在這一條。
+// 修正前 clickPower 是個定額，「打坐值幾秒的產量」會從 7.5 秒一路掉到 0.0000 秒 ——
+// 到金丹之後打坐就是裝飾品。改成給產量分成後，它在每個境界都值同樣的秒數。
+(() => {
+  const ratios = [];
+  for (const [i, realm] of CONTENT.realms.entries()) {
+    const s = State.create();
+    s.realm = i;
+    for (const g of CONTENT.generators) s.owned[g.id] = 20;
+    const rate = Economy.totalRate(s);
+    if (rate > 0) ratios.push({ 境界: realm.name, 值幾秒: Economy.clickPower(s) / rate });
+  }
+  // 後期定額項可以忽略，比例應該收斂到 clickShare
+  const late = ratios.slice(2);
+  const ok = late.every((r) => Math.abs(r.值幾秒 - CONTENT.clickShare) < CONTENT.clickShare * 0.01);
+  log(ok,
+      `打坐：每個境界都值 ${(CONTENT.clickShare * 100).toFixed(0)}% 的產量，不會隨境界歸零`,
+      late.map((r) => `${r.境界}:${r.值幾秒.toFixed(4)}秒`).join(" "));
+
+  // 講白一點：最高境界的打坐效益不能比前期差
+  const first = ratios[0].值幾秒, last = ratios[ratios.length - 1].值幾秒;
+  log(last >= first * 0.99,
+      "打坐：飛昇時的打坐效益不會低於煉氣時（修正前會差幾萬倍）",
+      `煉氣 ${first.toFixed(4)}秒 → 飛昇 ${last.toFixed(4)}秒`);
+})();
+
+// --- 機緣：增益 ----------------------------------------------
+const buffOutcome = CONTENT.fortunes.outcomes.find((o) => o.type === "buff" && o.value > 1);
+const demonOutcome = CONTENT.fortunes.outcomes.find((o) => o.value < 1);
+
+(() => {
+  const s = blankState(0);
+  const now = 1000000;
+  eq("buffMult：沒增益 = 1", Economy.buffMult(s, buffOutcome.effect, now), 1);
+
+  s.buffs[buffOutcome.id] = now + 5000;
+  eq("buffMult：增益生效", Economy.buffMult(s, buffOutcome.effect, now), buffOutcome.value);
+  eq("buffRemaining：還剩 5 秒", Economy.buffRemaining(s, buffOutcome.id, now), 5);
+
+  // 過期的增益還在生效是最難查的那種 bug
+  eq("buffMult：過期就不算（剛好到期）",
+     Economy.buffMult(s, buffOutcome.effect, now + 5000), 1);
+  eq("buffMult：過期就不算（超過）",
+     Economy.buffMult(s, buffOutcome.effect, now + 99999), 1);
+  eq("buffRemaining：過期 = 0", Economy.buffRemaining(s, buffOutcome.id, now + 9999), 0);
+
+  eq("buffMult：效果類型不符就不給", Economy.buffMult(s, "nope", now), 1);
+})();
+
+(() => {
+  // 心魔是減益，要真的把產量打下去。
+  //
+  // 這裡必須用真的 Date.now()：totalRate 內部拿的是 Date.now() 去比對到期，
+  // 不像 buffMult 可以注入。用假時間戳的話那個增益在它眼中早就過期了。
+  const s = blankState(2);
+  for (const g of CONTENT.generators) s.owned[g.id] = 10;
+  const before = Economy.totalRate(s);
+  s.buffs[demonOutcome.id] = Date.now() + 5000;
+  const after = Economy.totalRate(s);
+  log(Math.abs(after - before * demonOutcome.value) < 1e-6,
+      `心魔：產量真的變成 ×${demonOutcome.value}`, `${before} → ${after}`);
+
+  // 好的增益也要真的乘上去
+  const s2 = blankState(2);
+  for (const g of CONTENT.generators) s2.owned[g.id] = 10;
+  const b2 = Economy.totalRate(s2);
+  const muse = CONTENT.fortunes.outcomes.find((o) => o.type === "buff" && o.effect === "allRate" && o.value > 1);
+  s2.buffs[muse.id] = Date.now() + 5000;
+  log(Math.abs(Economy.totalRate(s2) - b2 * muse.value) < 1e-6,
+      `${muse.name}：產量真的變成 ×${muse.value}`);
+
+  // 頓悟要能乘到打坐上（而且連產量分成那一段也要一起乘）
+  const s3 = blankState(2);
+  for (const g of CONTENT.generators) s3.owned[g.id] = 10;
+  const c3 = Economy.clickPower(s3);
+  const ins = CONTENT.fortunes.outcomes.find((o) => o.type === "buff" && o.effect === "click");
+  s3.buffs[ins.id] = Date.now() + 5000;
+  log(Math.abs(Economy.clickPower(s3) - c3 * ins.value) < 1e-6,
+      `${ins.name}：打坐真的變成 ×${ins.value}`);
+})();
+
+(() => {
+  const s = blankState(0);
+  s.buffs["b1"] = 500;
+  s.buffs["b2"] = 2000;
+  State.expireBuffs(s, 1000);
+  is("expireBuffs：過期的被清掉", s.buffs.b1, undefined);
+  is("expireBuffs：還沒過期的留著", s.buffs.b2, 2000);
+})();
+
+// --- 機緣：抽獎 ----------------------------------------------
+(() => {
+  const list = CONTENT.fortunes.outcomes;
+  const total = list.reduce((a, o) => a + o.weight, 0);
+
+  // rng 回傳 0 → 一定抽到第一個；接近 1 → 一定抽到最後一個
+  is("pickFortune：rng=0 抽到第一個", Economy.pickFortune(() => 0).id, list[0].id);
+  is("pickFortune：rng≈1 抽到最後一個",
+     Economy.pickFortune(() => 0.9999999).id, list[list.length - 1].id);
+
+  // 剛好落在第一個和第二個的邊界
+  is("pickFortune：邊界落在第二個",
+     Economy.pickFortune(() => list[0].weight / total).id, list[1].id);
+
+  // 每個結果都抽得到，不會有永遠抽不中的死內容
+  const hit = new Set();
+  for (let i = 0; i < 2000; i++) hit.add(Economy.pickFortune().id);
+  log(hit.size === list.length, "pickFortune：每一種結果都抽得到",
+      `抽中 ${hit.size} / ${list.length} 種`);
+})();
+
+// --- 機緣：生成與領取 ----------------------------------------
+(() => {
+  const s = blankState(0);
+  const now = 1000000;
+  s.nextFortuneAt = 0; // 早該出現了
+
+  // 還沒有任何產量時不該生 —— 那時「靈氣爆發」會爆出 0，只會讓人困惑
+  State.tickFortune(s, now, () => 0.5);
+  is("tickFortune：沒產量時不生機緣", s.fortune, null);
+
+  s.owned[CONTENT.generators[0].id] = 10;
+  State.tickFortune(s, now, () => 0.5);
+  log(s.fortune !== null, "tickFortune：有產量後就會生", JSON.stringify(s.fortune));
+  log(s.fortune && s.fortune.x > 0 && s.fortune.x < 1 && s.fortune.y > 0 && s.fortune.y < 1,
+      "tickFortune：位置是 0~1 的相對值（存像素會在轉螢幕時跑掉）",
+      s.fortune && `x=${s.fortune.x} y=${s.fortune.y}`);
+
+  // 時限到了就飛走，並重新排隊
+  const expires = s.fortune.expires;
+  State.tickFortune(s, expires + 1, () => 0.5);
+  is("tickFortune：時限到就飛走", s.fortune, null);
+  log(s.nextFortuneAt > expires, "tickFortune：飛走後會重新排隊");
+})();
+
+(() => {
+  // 靈氣爆發：拿到 N 秒的產量
+  const burst = CONTENT.fortunes.outcomes.find((o) => o.type === "instant");
+  const s = blankState(2);
+  for (const g of CONTENT.generators) s.owned[g.id] = 10;
+  const now = 1000000;
+  s.fortune = { id: burst.id, expires: now + 5000, x: 0.5, y: 0.5 };
+
+  const rate = Economy.totalRate(s);
+  const r = State.claimFortune(s, now, () => 0.5);
+  log(r && r.outcome.id === burst.id, "claimFortune：回報抽到什麼");
+  eq("claimFortune：靈氣爆發給 N 秒的產量", s.money, rate * burst.seconds);
+  is("claimFortune：領完就消失", s.fortune, null);
+  log(s.nextFortuneAt > now, "claimFortune：領完會重新排隊");
+
+  // 領過的不能再領
+  is("claimFortune：沒東西可領時回傳 null", State.claimFortune(s, now), null);
+})();
+
+(() => {
+  // 頓悟：掛上限時增益
+  const s = blankState(0);
+  const now = 1000000;
+  s.fortune = { id: buffOutcome.id, expires: now + 5000, x: 0.5, y: 0.5 };
+  State.claimFortune(s, now, () => 0.5);
+  is("claimFortune：增益的到期時間 = 現在 + duration",
+     s.buffs[buffOutcome.id], now + buffOutcome.duration * 1000);
+  eq("claimFortune：增益立刻生效",
+     Economy.buffMult(s, buffOutcome.effect, now), buffOutcome.value);
+})();
+
+(() => {
+  // 天降橫財：掉當前這層的材料
+  const mats = CONTENT.fortunes.outcomes.find((o) => o.type === "materials");
+  const s = blankState(0);
+  s.layer = 2;
+  const now = 1000000;
+  s.fortune = { id: mats.id, expires: now + 5000, x: 0.5, y: 0.5 };
+  const r = State.claimFortune(s, now, () => 0.5);
+  const expectMat = CONTENT.layers[2].mobDrop.material;
+  is("claimFortune：天降橫財掉當前這層的材料", r && r.material, expectMat);
+  is("claimFortune：材料有入帳", s.materials[expectMat], mats.qty);
+
+  // 全部通關後也不能爆
+  const s2 = blankState(0);
+  s2.layer = CONTENT.layers.length;
+  s2.fortune = { id: mats.id, expires: now + 5000, x: 0.5, y: 0.5 };
+  const r2 = State.claimFortune(s2, now, () => 0.5);
+  log(r2 && r2.material, "claimFortune：全部通關後天降橫財也不會爆", JSON.stringify(r2 && r2.material));
+})();
+
+(() => {
+  // 過期的機緣不能領
+  const s = blankState(0);
+  const now = 1000000;
+  s.fortune = { id: buffOutcome.id, expires: now - 1, x: 0.5, y: 0.5 };
+  is("claimFortune：已經飛走的領不到", State.claimFortune(s, now), null);
+})();
+
+// --- 機緣：第一顆要來得快 ------------------------------------
+(() => {
+  const now = 1000000;
+  const s = blankState(0);
+  is("scheduleFortune：還沒領過 → 用短間隔（讓新玩家先學會有這機制）",
+     (() => { State.scheduleFortune(s, now, () => 0.5);
+              return (s.nextFortuneAt - now) / 1000; })(),
+     CONTENT.fortunes.firstInterval);
+
+  s.fortunesClaimed = 1;
+  State.scheduleFortune(s, now, () => 0);
+  is("scheduleFortune：領過之後恢復正常間隔",
+     (s.nextFortuneAt - now) / 1000, CONTENT.fortunes.minInterval);
+  State.scheduleFortune(s, now, () => 0.9999999);
+  log(Math.abs((s.nextFortuneAt - now) / 1000 - CONTENT.fortunes.maxInterval) < 0.1,
+      "scheduleFortune：間隔上限是 maxInterval",
+      `得到 ${((s.nextFortuneAt - now) / 1000).toFixed(1)} 秒`);
+
+  // 領完第一顆之後，下一顆不能還是短間隔
+  const s2 = blankState(0);
+  s2.owned[CONTENT.generators[0].id] = 10;
+  s2.fortune = { id: CONTENT.fortunes.outcomes[0].id, expires: now + 5000, x: 0.5, y: 0.5 };
+  State.claimFortune(s2, now, () => 0);
+  is("claimFortune：領過的次數有記起來", s2.fortunesClaimed, 1);
+  log((s2.nextFortuneAt - now) / 1000 >= CONTENT.fortunes.minInterval,
+      "claimFortune：領完第一顆後，下一顆就用正常間隔",
+      `還要等 ${((s2.nextFortuneAt - now) / 1000).toFixed(0)} 秒`);
+})();
+
+// --- 機緣：重開 App 不能刷 -----------------------------------
+(() => {
+  const KEY = "idle-save-v1";
+  const backup = localStorage.getItem(KEY);
+  const now = Date.now();
+
+  // 排程還在未來 → 要接續，不能重來
+  const future = now + 200000;
+  localStorage.setItem(KEY, JSON.stringify({ nextFortuneAt: future }));
+  let r = State.load();
+  is("load：排程還在未來就接續（否則重開 App 就等於刷機緣）", r.nextFortuneAt, future);
+  is("load：飄著的機緣不跨越關閉存續", r.fortune, null);
+
+  // 排程已經過期（離線很久）→ 重新排隊，不能一開 App 就白送一個。
+  // 新玩家（還沒領過）用的是短間隔，所以門檻要跟著 fortunesClaimed 走。
+  localStorage.setItem(KEY, JSON.stringify({ nextFortuneAt: now - 999999 }));
+  r = State.load();
+  log(r.nextFortuneAt >= now + CONTENT.fortunes.firstInterval * 1000 - 50,
+      "load：排程過期就重新排隊，不會一開 App 就白送一個（新玩家用短間隔）",
+      `還要等 ${((r.nextFortuneAt - now) / 1000).toFixed(0)} 秒`);
+
+  localStorage.setItem(KEY, JSON.stringify({ nextFortuneAt: now - 999999, fortunesClaimed: 3 }));
+  r = State.load();
+  log(r.nextFortuneAt >= now + CONTENT.fortunes.minInterval * 1000 - 50,
+      "load：領過機緣的玩家重開後，要等的是正常間隔",
+      `還要等 ${((r.nextFortuneAt - now) / 1000).toFixed(0)} 秒`);
+
+  // 過期的增益不該被讀回來
+  localStorage.setItem(KEY, JSON.stringify({ buffs: { [buffOutcome.id]: now - 1000 } }));
+  r = State.load();
+  is("load：過期的增益不會被讀回來", r.buffs[buffOutcome.id], undefined);
+
+  localStorage.setItem(KEY, JSON.stringify({ buffs: { [buffOutcome.id]: now + 30000 } }));
+  r = State.load();
+  log(r.buffs[buffOutcome.id] > now, "load：還沒過期的增益要留著");
+
+  if (backup !== null) localStorage.setItem(KEY, backup); else localStorage.removeItem(KEY);
+})();
+
+// --- 戰力 ----------------------------------------------------
+(() => {
+  const s = blankState(0);
+  eq("power：凡人的基礎戰力", Economy.power(s), CONTENT.realms[0].power);
+
+  const pt = CONTENT.techniques.find((x) => x.target === "power");
+  s.techniques[pt.id] = true;
+  eq("power：功法有乘進去", Economy.power(s), CONTENT.realms[0].power * pt.multiplier);
+
+  const pb = CONTENT.treasures.find((x) => x.effect === "power");
+  s.treasures[pb.id] = true;
+  eq("power：法寶也有乘進去",
+     Economy.power(s), CONTENT.realms[0].power * pt.multiplier * pb.value);
+
+  // 設施功法不該漏到戰力上 —— 這正是 "all" 的判斷式最容易寫錯的地方
+  const s2 = blankState(0);
+  const genTech = CONTENT.techniques.find((x) =>
+    CONTENT.generators.some((g) => g.id === x.target));
+  s2.techniques[genTech.id] = true;
+  eq("power：設施功法不該影響戰力", Economy.power(s2), CONTENT.realms[0].power);
+  eq("clickPower：設施功法不該影響打坐", Economy.clickPower(s2), CONTENT.clickPower);
+})();
+
+// --- 靈寵 ----------------------------------------------------
+const bossPet = CONTENT.pets.find((p) => !p.cost);
+const shopPet = CONTENT.pets.find((p) => p.cost > 0);
+
+(() => {
+  eq("petValue：Lv1 = base", Economy.petValue(bossPet, 1), bossPet.base);
+  eq("petValue：Lv3 = base + perLevel×2",
+     Economy.petValue(bossPet, 3), bossPet.base + bossPet.perLevel * 2);
+  eq("petUpgradeCost：Lv1→2", Economy.petUpgradeCost(bossPet, 1), bossPet.materialCost);
+  eq("petUpgradeCost：Lv3→4 越養越貴", Economy.petUpgradeCost(bossPet, 3), bossPet.materialCost * 3);
+
+  // 只有「帶在身上」的那一隻才算數
+  const s = blankState(0);
+  s.pets[bossPet.id] = { level: 1 };
+  eq("petBonus：收服了但沒帶上 → 沒效果", Economy.petBonus(s, bossPet.effect), 1);
+  s.equipped = bossPet.id;
+  eq("petBonus：帶上才有效果", Economy.petBonus(s, bossPet.effect), bossPet.base);
+  eq("petBonus：效果類型不符就不給", Economy.petBonus(s, "nope"), 1);
+  eq("power：靈寵加成有進到戰力",
+     Economy.power(s), CONTENT.realms[0].power * bossPet.base);
+})();
+
+(() => {
+  const s = blankState(0);
+  s.insight = shopPet.cost - 1;
+  is("buyPet：悟性不夠買不了", State.buyPet(s, shopPet.id), false);
+  s.insight = shopPet.cost;
+  is("buyPet：夠悟性就請得回來", State.buyPet(s, shopPet.id), true);
+  is("buyPet：有扣悟性", s.insight, 0);
+  is("buyPet：等級從 1 開始", Economy.petLevel(s, shopPet.id), 1);
+  is("buyPet：第一隻自動帶上", s.equipped, shopPet.id);
+  is("buyPet：不能重複買", State.buyPet(s, shopPet.id), false);
+
+  s.insight = 99999;
+  is("buyPet：魔王靈寵不能用買的（只能打贏收服）", State.buyPet(s, bossPet.id), false);
+  is("buyPet：亂給 id 不會爆", State.buyPet(s, "根本不存在"), false);
+})();
+
+(() => {
+  const s = blankState(0);
+  is("feedPet：沒收服的餵不了", State.feedPet(s, bossPet.id), false);
+
+  s.pets[bossPet.id] = { level: 1 };
+  is("feedPet：沒材料餵不了", State.feedPet(s, bossPet.id), false);
+  is("feedPet：餵不了就不動等級", Economy.petLevel(s, bossPet.id), 1);
+
+  s.materials[bossPet.material] = Economy.petUpgradeCost(bossPet, 1);
+  is("feedPet：材料夠就升級", State.feedPet(s, bossPet.id), true);
+  is("feedPet：等級 +1", Economy.petLevel(s, bossPet.id), 2);
+  is("feedPet：材料被吃掉", s.materials[bossPet.material], 0);
+
+  s.pets[bossPet.id] = { level: bossPet.maxLevel };
+  s.materials[bossPet.material] = 99999;
+  is("feedPet：滿級就不能再餵", State.feedPet(s, bossPet.id), false);
+  is("feedPet：滿級時材料不該被吃", s.materials[bossPet.material], 99999);
+})();
+
+(() => {
+  const s = blankState(0);
+  is("equipPet：沒收服的不能帶", State.equipPet(s, bossPet.id), false);
+  is("equipPet：帶不了就維持 null", s.equipped, null);
+
+  s.pets[bossPet.id] = { level: 1 };
+  s.pets[shopPet.id] = { level: 1 };
+  is("equipPet：收服了就能帶", State.equipPet(s, bossPet.id), true);
+  is("equipPet：換一隻", State.equipPet(s, shopPet.id) && s.equipped, shopPet.id);
+  log(s.equipped === shopPet.id, "equipPet：只能帶一隻（換上新的就換掉舊的）");
+})();
+
+// --- 歷練：打怪 ----------------------------------------------
+(() => {
+  const layer = CONTENT.layers[0];
+  const s = blankState(0); // 凡人，戰力 1
+  is("canBeatBoss：凡人打不過第一層魔王", Economy.canBeatBoss(s, layer), false);
+
+  const s2 = blankState(1); // 煉氣，戰力 5；魔王 150 / 30 秒 = 剛好需要 5
+  is("canBeatBoss：煉氣剛好打得過", Economy.canBeatBoss(s2, layer), true);
+})();
+
+(() => {
+  const layer = CONTENT.layers[0]; // 小怪 20 血
+  const s = blankState(1);         // 戰力 5 → 4 秒一隻
+  State.advanceCombat(s, 4);
+  is("advanceCombat：4 秒剛好殺掉一隻小怪", s.kills, 1);
+  is("advanceCombat：小怪掉天才地寶", s.materials[layer.mobDrop.material], 1);
+  is("advanceCombat：殺完傷害歸零，換下一隻", s.dmg, 0);
+
+  // 半隻的進度要留著
+  State.advanceCombat(s, 2);
+  is("advanceCombat：打一半的傷害會累積", s.dmg, 10);
+  is("advanceCombat：還沒死就不算擊殺", s.kills, 1);
+})();
+
+(() => {
+  const layer = CONTENT.layers[0];
+  const MOBS = CONTENT.combat.mobsPerLayer;
+  const s = blankState(1); // 戰力 5
+
+  State.advanceCombat(s, 4 * MOBS); // 清光小怪
+  is("advanceCombat：清完小怪就換魔王上場", s.kills, MOBS);
+  is("advanceCombat：這時還沒過關", s.layer, 0);
+
+  const out = State.advanceCombat(s, 30); // 魔王 150 / 5 = 30 秒
+  is("advanceCombat：擊殺魔王後進入下一層", s.layer, 1);
+  is("advanceCombat：進新的一層要重數小怪", s.kills, 0);
+  is("advanceCombat：魔王給悟性", s.insight, layer.insight);
+  is("advanceCombat：打贏就收服靈寵", Economy.petLevel(s, layer.petId), 1);
+  is("advanceCombat：第一隻靈寵自動帶上", s.equipped, layer.petId);
+  log(out.bosses.length === 1 && out.pets.length === 1,
+      "advanceCombat：回報擊殺與收服（給離線結算用）", JSON.stringify(out.pets));
+})();
+
+// 卡關時不能空轉 —— 這是離線結算最容易爆的地方
+(() => {
+  const s = blankState(0); // 凡人戰力 1，打不過第一層魔王
+  s.kills = CONTENT.combat.mobsPerLayer; // 直接站在魔王面前
+
+  const t0 = performance.now();
+  State.advanceCombat(s, 8 * 3600); // 離線 8 小時
+  const ms = performance.now() - t0;
+
+  log(ms < 50, "advanceCombat：卡關時離線 8 小時不會空轉", `花了 ${ms.toFixed(1)}ms`);
+  is("advanceCombat：卡關就是卡關，層數不變", s.layer, 0);
+})();
+
+// 戰力爆表時也不能空轉（會一路清到最後一層然後停下來）
+(() => {
+  const s = blankState(CONTENT.realms.length - 1); // 飛昇
+  for (const b of CONTENT.treasures) if (b.effect === "power") s.treasures[b.id] = true;
+
+  const t0 = performance.now();
+  State.advanceCombat(s, 8 * 3600);
+  const ms = performance.now() - t0;
+
+  log(ms < 50, "advanceCombat：戰力爆表時也不會空轉", `花了 ${ms.toFixed(1)}ms`);
+  is("advanceCombat：全部通關後就停在最後", s.layer, CONTENT.layers.length);
+  is("advanceCombat：通關後 layerAt 回傳 null", Economy.layerAt(s.layer), null);
+  log(Object.keys(s.pets).length === CONTENT.layers.length,
+      "advanceCombat：一路打完會收服全部魔王靈寵",
+      `收服了 ${Object.keys(s.pets).length} 隻`);
+})();
+
+// 掉落倍率的靈寵要真的影響掉落
+(() => {
+  const dropPet = CONTENT.pets.find((p) => p.effect === "drop");
+  const layer = CONTENT.layers[0];
+  const s = blankState(1);
+  s.pets[dropPet.id] = { level: 1 };
+  s.equipped = dropPet.id;
+  State.advanceCombat(s, 4); // 殺一隻
+  const expected = Math.max(1, Math.floor(layer.mobDrop.qty * dropPet.base));
+  is(`dropMultiplier：帶著${dropPet.name}掉落變 ×${dropPet.base}`,
+     s.materials[layer.mobDrop.material], expected);
+})();
+
+// --- 符籙 ----------------------------------------------------
+const talisman = CONTENT.consumables.find((c) => c.effect === "guaranteeBreakthrough");
+
+(() => {
+  const s = blankState(0);
+  s.insight = talisman.cost * 2;
+  is("buyConsumable：買得到", State.buyConsumable(s, talisman.id), true);
+  is("buyConsumable：數量 1", Economy.consumableCount(s, talisman.id), 1);
+  State.buyConsumable(s, talisman.id);
+  is("buyConsumable：可以囤第二張", Economy.consumableCount(s, talisman.id), 2);
+  is("buyConsumable：悟性花光就買不了", State.buyConsumable(s, talisman.id), false);
+  is("buyConsumable：亂給 id 不會爆", State.buyConsumable(s, "根本不存在"), false);
+})();
+
+(() => {
+  // 渡劫底線 55%，擲出 0.999 必敗 —— 但有符就該保證成功
+  const s = blankState(9);
+  s.money = CONTENT.realms[10].requirement;
+  s.consumables[talisman.id] = 1;
+  const got = State.breakthrough(s, always(0.999), true);
+  log(got && got.success === true, "渡劫符：擲出必敗的值也保證成功", JSON.stringify(got));
+  is("渡劫符：用掉一張", Economy.consumableCount(s, talisman.id), 0);
+  log(got && got.usedTalisman === true, "渡劫符：有回報用掉了");
+})();
+
+(() => {
+  // 這是最容易惹毛玩家的地方：本來就穩過還吃他一張符
+  const s = blankState(0); // 煉氣 100%
+  s.money = CONTENT.realms[1].requirement;
+  s.consumables[talisman.id] = 1;
+  const got = State.breakthrough(s, always(0), true);
+  is("渡劫符：成功率本來就 100% 時不該被吃掉", Economy.consumableCount(s, talisman.id), 1);
+  log(got && got.usedTalisman === false, "渡劫符：沒用到就回報 false");
+})();
+
+(() => {
+  // 沒符卻勾了（例如剛好被別的操作用掉）→ 不能憑空生效
+  const s = blankState(9);
+  s.money = CONTENT.realms[10].requirement;
+  const got = State.breakthrough(s, always(0.999), true);
+  log(got && got.success === false, "渡劫符：沒符時勾選也不會憑空保成功", JSON.stringify(got));
+  is("渡劫符：沒符時數量不會變成負的", Economy.consumableCount(s, talisman.id), 0);
+})();
+
+// --- 突破不該動到歷練進度 ------------------------------------
+(() => {
+  const s = blankState(0);
+  s.money = CONTENT.realms[1].requirement;
+  s.layer = 3;
+  s.kills = 4;
+  s.pets[bossPet.id] = { level: 5 };
+  s.equipped = bossPet.id;
+  s.materials["m_dew"] = 42;
+  const b = CONTENT.treasures[0];
+  s.treasures[b.id] = true;
+
+  State.breakthrough(s, always(0));
+  is("突破：歷練層數保留", s.layer, 3);
+  is("突破：靈寵保留", Economy.petLevel(s, bossPet.id), 5);
+  is("突破：帶著的靈寵不會被卸下", s.equipped, bossPet.id);
+  is("突破：天才地寶保留", s.materials["m_dew"], 42);
+  is("突破：法寶保留", !!s.treasures[b.id], true);
+})();
+
+// --- 五層加成要能疊在一起 ------------------------------------
+(() => {
+  const s = blankState(0);
+  const gen = CONTENT.generators[0];
+  const f = CONTENT.techniques.find((x) => x.target === gen.id);
+  const b = CONTENT.treasures.find((x) => x.effect === "allRate");
+  const pet = CONTENT.pets.find((p) => p.effect === "allRate");
+
+  s.owned[gen.id] = 10;
+  s.realm = 2; // 築基
+  s.techniques[f.id] = true;
+  s.treasures[b.id] = true;
+  s.pets[pet.id] = { level: 1 };
+  s.equipped = pet.id;
+
+  const expected = 10 * gen.baseRate * f.multiplier
+    * CONTENT.realms[2].multiplier * b.value * pet.base;
+  eq("genRate：基礎 × 功法 × 境界 × 法寶 × 靈寵，五層都要乘進去",
+     Economy.genRate(s, gen), expected);
+  eq("totalRate：只有這一種設施時應等於 genRate", Economy.totalRate(s), expected);
+})();
+
+// --- 存檔容錯：新系統的部分 ----------------------------------
+(() => {
+  const KEY = "idle-save-v1";
+  const backup = localStorage.getItem(KEY);
+  const tryLoad = (raw) => {
+    localStorage.setItem(KEY, raw);
+    try { return State.load(); } catch (e) { return "拋出例外：" + e.message; }
+  };
+
+  // 帶著一隻根本沒收服的靈寵 → 加成會憑空出現，必須擋掉
+  let r = tryLoad(JSON.stringify({ equipped: bossPet.id, pets: {} }));
+  is("load：帶著沒收服的靈寵 → 清成 null", r && r.equipped, null);
+
+  // data.equipped 是存檔裡的字串，會被拿去當 key 索引 ——
+  // "__proto__" 這種東西不能讓它通過
+  r = tryLoad(JSON.stringify({ equipped: "__proto__", pets: {} }));
+  is("load：equipped 是 __proto__ 也擋得住", r && r.equipped, null);
+  r = tryLoad(JSON.stringify({ equipped: "constructor", pets: {} }));
+  is("load：equipped 是 constructor 也擋得住", r && r.equipped, null);
+  r = tryLoad(JSON.stringify({ equipped: 12345, pets: {} }));
+  is("load：equipped 不是字串也擋得住", r && r.equipped, null);
+
+  // 靈寵等級超過上限
+  r = tryLoad(JSON.stringify({ pets: { [bossPet.id]: { level: 9999 } } }));
+  is("load：靈寵等級夾到 maxLevel", r && r.pets[bossPet.id].level, bossPet.maxLevel);
+
+  // 等級 0 等於沒收服，不該存在
+  r = tryLoad(JSON.stringify({ pets: { [bossPet.id]: { level: 0 } } }));
+  is("load：等級 0 的靈寵視為沒收服", r && !!r.pets[bossPet.id], false);
+
+  // 層數超出範圍（例如你在 content.js 刪掉幾層）
+  r = tryLoad(JSON.stringify({ layer: 9999 }));
+  is("load：層數夾到全部通關", r && r.layer, CONTENT.layers.length);
+  r = tryLoad(JSON.stringify({ layer: -5 }));
+  is("load：負的層數夾到 0", r && r.layer, 0);
+
+  // 不認識的材料 / 靈寵要被丟掉
+  r = tryLoad(JSON.stringify({ materials: { 早就刪掉的材料: 99, m_dew: 3 } }));
+  is("load：不認識的材料被丟掉", r && r.materials["早就刪掉的材料"], undefined);
+  is("load：認得的材料留著", r && r.materials.m_dew, 3);
+
+  r = tryLoad(JSON.stringify({ materials: { m_dew: -50 } }));
+  is("load：負數材料不會留下", r && r.materials.m_dew, undefined);
+
+  r = tryLoad(JSON.stringify({ consumables: { [talisman.id]: 2.9 } }));
+  is("load：符籙數量取整數", r && r.consumables[talisman.id], 2);
+
+  if (backup !== null) localStorage.setItem(KEY, backup); else localStorage.removeItem(KEY);
+})();
+
+// 壞掉的 dmg 不能讓 advanceCombat 的迴圈失控
+(() => {
+  const s = blankState(1);
+  s.dmg = 1e9; // 遠大於小怪的 20 血 —— need 會算成負數
+  const t0 = performance.now();
+  State.advanceCombat(s, 60);
+  const ms = performance.now() - t0;
+  log(ms < 50, "advanceCombat：dmg 被改壞時不會無限迴圈", `花了 ${ms.toFixed(1)}ms`);
+  log(s.kills <= CONTENT.combat.mobsPerLayer && s.layer <= 1,
+      "advanceCombat：dmg 被改壞時不會白送一堆擊殺",
+      `layer=${s.layer} kills=${s.kills}`);
+})();
+
+(() => {
+  const KEY = "idle-save-v1";
+  const backup = localStorage.getItem(KEY);
+  const tryLoad = (raw) => { localStorage.setItem(KEY, raw); return State.load(); };
+
+  // 舊存檔完全沒有這些欄位（升級前存的）
+  const r = tryLoad(JSON.stringify({ money: 500, realm: 1 }));
+  log(r && r.layer === 0 && r.equipped === null
+        && typeof r.pets === "object" && typeof r.materials === "object",
+      "load：升級前的舊存檔不會炸，新欄位自動補上",
+      JSON.stringify(r && { layer: r.layer, equipped: r.equipped }));
+
+  if (backup !== null) localStorage.setItem(KEY, backup); else localStorage.removeItem(KEY);
+})();
+
+// --- 數字格式 ------------------------------------------------
+is("formatNumber：0", Economy.formatNumber(0), "0");
+is("formatNumber：999", Economy.formatNumber(999), "999");
+is("formatNumber：1000 → K", Economy.formatNumber(1000), "1.00K");
+is("formatNumber：1234 → K", Economy.formatNumber(1234), "1.23K");
+is("formatNumber：1.234e6 → M", Economy.formatNumber(1234567), "1.23M");
+is("formatNumber：1e9 → B", Economy.formatNumber(1e9), "1.00B");
+is("formatNumber：1e12 → T", Economy.formatNumber(1e12), "1.00T");
+is("formatNumber：負數", Economy.formatNumber(-1234), "-1.23K");
+is("formatNumber：無限大", Economy.formatNumber(Infinity), "∞");
+// 浮點數誤差不該產生 "1000.00K" 這種東西
+log(!/^1000\./.test(Economy.formatNumber(999999.9999)),
+    "formatNumber：999999.9999 不會變成 1000.00K",
+    "得到 " + Economy.formatNumber(999999.9999));
+// 超過所有後綴就退回科學記號，不能顯示 undefined
+log(!/undefined/.test(Economy.formatNumber(1e40)),
+    "formatNumber：超大數字不會吐 undefined",
+    "得到 " + Economy.formatNumber(1e40));
+
+// --- 倍率格式 ------------------------------------------------
+is("formatMultiplier：1 不要變成 1.0", Economy.formatMultiplier(1), "1");
+is("formatMultiplier：3 不要變成 3.0", Economy.formatMultiplier(3), "3");
+is("formatMultiplier：375", Economy.formatMultiplier(375), "375");
+is("formatMultiplier：非整數還是給小數", Economy.formatMultiplier(2.5), "2.5");
+is("formatMultiplier：大數字用後綴", Economy.formatMultiplier(1900), "1.90K");
+is("formatMultiplier：超大數字", Economy.formatMultiplier(6e6), "6.00M");
+
+is("formatCount：6 不要變成 6.0（悟性是整數）", Economy.formatCount(6), "6");
+is("formatCount：0", Economy.formatCount(0), "0");
+is("formatCount：368", Economy.formatCount(368), "368");
+is("formatCount：大數字用後綴", Economy.formatCount(1500), "1.50K");
+
+is("formatPercent：0.55", Economy.formatPercent(0.55), "55%");
+is("formatPercent：1", Economy.formatPercent(1), "100%");
+is("formatPercent：0.4", Economy.formatPercent(0.4), "40%");
+
+// --- 時間格式 ------------------------------------------------
+is("formatDuration：45 秒", Economy.formatDuration(45), "45 秒");
+is("formatDuration：90 秒", Economy.formatDuration(90), "1 分 30 秒");
+is("formatDuration：3725 秒", Economy.formatDuration(3725), "1 小時 2 分");
+
+// --- 你的 content.js 有沒有寫錯 ------------------------------
+(() => {
+  const ids = new Set();
+  let ok = true, note = "";
+  for (const gen of CONTENT.generators) {
+    if (ids.has(gen.id)) { ok = false; note = `id 重複了：${gen.id}`; break; }
+    ids.add(gen.id);
+    if (!(gen.baseCost > 0))   { ok = false; note = `${gen.id} 的 baseCost 要大於 0`; break; }
+    if (!(gen.costGrowth >= 1)){ ok = false; note = `${gen.id} 的 costGrowth 要 >= 1，否則會越買越便宜`; break; }
+    if (!(gen.baseRate > 0))   { ok = false; note = `${gen.id} 的 baseRate 要大於 0`; break; }
+  }
+  log(ok, "content.js：修煉設施設定合法（id 不重複、數值合理）", note);
+})();
+
+(() => {
+  const r = CONTENT.realms;
+  let ok = true, note = "";
+  if (!Array.isArray(r) || r.length < 2) {
+    ok = false; note = "realms 至少要有兩個境界（起始 + 一個可以突破的目標）";
+  } else if (r[0].requirement !== 0) {
+    ok = false; note = "第一個境界的 requirement 必須是 0（那是起點，不用突破就能到）";
+  } else {
+    for (let i = 0; i < r.length; i++) {
+      if (!r[i].name) { ok = false; note = `第 ${i} 個境界沒有名字`; break; }
+      if (!(r[i].multiplier > 0)) { ok = false; note = `「${r[i].name}」的 multiplier 要大於 0`; break; }
+      if (i > 0) {
+        if (!(r[i].requirement > r[i - 1].requirement)) {
+          ok = false;
+          note = `「${r[i].name}」的 requirement 沒有比「${r[i-1].name}」高 —— 那樣會一次突破好幾層`;
+          break;
+        }
+        if (!(r[i].multiplier > r[i - 1].multiplier)) {
+          ok = false;
+          note = `「${r[i].name}」的 multiplier 沒有比「${r[i-1].name}」高 —— 突破反而變弱了`;
+          break;
+        }
+      }
+    }
+  }
+  log(ok, "content.js：境界設定合法（門檻與倍率都必須遞增）", note);
+})();
+
+(() => {
+  const genIds = new Set(CONTENT.generators.map((g) => g.id));
+  const ids = new Set();
+  let ok = true, note = "";
+  for (const f of CONTENT.techniques) {
+    if (ids.has(f.id)) { ok = false; note = `功法 id 重複了：${f.id}`; break; }
+    ids.add(f.id);
+    if (!(f.cost > 0)) { ok = false; note = `「${f.name}」的 cost 要大於 0`; break; }
+    if (!(f.multiplier > 1)) { ok = false; note = `「${f.name}」的 multiplier 要大於 1，否則買了反而變弱`; break; }
+    // 特殊目標 + 修煉設施的 id，這兩類以外都是打錯字
+    const SPECIAL = new Set(["click", "power", "all"]);
+    if (!SPECIAL.has(f.target) && !genIds.has(f.target)) {
+      ok = false;
+      note = `「${f.name}」的 target 是「${f.target}」，既不是修煉設施的 id，也不是 ${[...SPECIAL].join(" / ")} —— 買了不會有任何效果`;
+      break;
+    }
+  }
+  log(ok, "content.js：功法設定合法（id 不重複、target 指得到東西）", note);
+})();
+
+(() => {
+  // 這份清單要跟 economy.js 裡真的有處理的 effect 一致。
+  // 刻意手寫、不從程式碼推導 —— 推導的話 effect 打錯字就永遠抓不到，
+  // 而「打錯字的法寶買了完全沒作用、但畫面一切正常」正是這條要防的。
+  const EFFECTS = new Set([
+    "click", "power", "allRate",   // 乘法
+    "clickShare", "offlineHours", "tribulation", // 加法
+  ]);
+  const ids = new Set();
+  let ok = true, note = "";
+  for (const b of CONTENT.treasures) {
+    if (ids.has(b.id)) { ok = false; note = `法寶 id 重複了：${b.id}`; break; }
+    ids.add(b.id);
+    if (!(b.cost > 0)) { ok = false; note = `「${b.name}」的 cost 要大於 0`; break; }
+    if (!EFFECTS.has(b.effect)) {
+      ok = false;
+      note = `「${b.name}」的 effect 是「${b.effect}」，程式只認得 ${[...EFFECTS].join(" / ")}`;
+      break;
+    }
+    if (!(b.value > 0)) { ok = false; note = `「${b.name}」的 value 要大於 0`; break; }
+    // click / power / allRate 是乘法，offlineHours / tribulation 是加法
+    const MULTIPLICATIVE = new Set(["click", "power", "allRate"]);
+    if (MULTIPLICATIVE.has(b.effect) && !(b.value > 1)) {
+      ok = false; note = `「${b.name}」是乘法效果，value 要大於 1，否則買了反而變弱`; break;
+    }
+  }
+  log(ok, "content.js：法寶設定合法（effect 是程式認得的、乘法效果不會變弱）", note);
+})();
+
+(() => {
+  const matIds = new Set(CONTENT.materials.map((m) => m.id));
+  const petIds = new Set(CONTENT.pets.map((p) => p.id));
+  const ids = new Set();
+  let ok = true, note = "";
+  for (const [i, l] of CONTENT.layers.entries()) {
+    if (!(l.mobHp > 0) || !(l.bossHp > 0)) { ok = false; note = `第 ${i+1} 層的血量要大於 0`; break; }
+    if (!(l.bossHp > l.mobHp)) { ok = false; note = `第 ${i+1} 層的魔王比小怪還弱`; break; }
+    if (!matIds.has(l.mobDrop.material)) {
+      ok = false; note = `第 ${i+1} 層掉的「${l.mobDrop.material}」不在 materials 裡 —— 打了會掉出不存在的東西`; break;
+    }
+    if (l.petId && !petIds.has(l.petId)) {
+      ok = false; note = `第 ${i+1} 層的 petId「${l.petId}」不在 pets 裡 —— 打贏會收服到空氣`; break;
+    }
+    if (ids.has(l.petId)) { ok = false; note = `靈寵「${l.petId}」被兩層同時指定`; break; }
+    if (l.petId) ids.add(l.petId);
+    if (i > 0 && !(l.bossHp > CONTENT.layers[i-1].bossHp)) {
+      ok = false; note = `第 ${i+1} 層的魔王沒有比上一層強`; break;
+    }
+  }
+  log(ok, "content.js：歷練設定合法（掉落與靈寵都指得到、難度遞增）", note);
+})();
+
+(() => {
+  const matIds = new Set(CONTENT.materials.map((m) => m.id));
+  const EFFECTS = new Set(["power", "allRate", "drop"]);
+  const ids = new Set();
+  let ok = true, note = "";
+  for (const p of CONTENT.pets) {
+    if (ids.has(p.id)) { ok = false; note = `靈寵 id 重複了：${p.id}`; break; }
+    ids.add(p.id);
+    if (!EFFECTS.has(p.effect)) {
+      ok = false; note = `「${p.name}」的 effect 是「${p.effect}」，程式只認得 ${[...EFFECTS].join(" / ")}`; break;
+    }
+    if (!(p.base > 1)) { ok = false; note = `「${p.name}」的 base 要大於 1，否則帶上反而變弱`; break; }
+    if (!(p.maxLevel >= 1)) { ok = false; note = `「${p.name}」的 maxLevel 要至少是 1`; break; }
+    if (!matIds.has(p.material)) {
+      ok = false; note = `「${p.name}」要餵的「${p.material}」不在 materials 裡 —— 永遠餵不了`; break;
+    }
+    if (!(p.materialCost > 0)) { ok = false; note = `「${p.name}」的 materialCost 要大於 0`; break; }
+  }
+  log(ok, "content.js：靈寵設定合法（effect 認得、餵的材料存在）", note);
+})();
+
+(() => {
+  const EFFECTS = new Set(["guaranteeBreakthrough"]);
+  let ok = true, note = "";
+  for (const c of CONTENT.consumables) {
+    if (!EFFECTS.has(c.effect)) {
+      ok = false; note = `「${c.name}」的 effect 是「${c.effect}」，程式目前只認得 ${[...EFFECTS].join(" / ")}`; break;
+    }
+    if (!(c.cost > 0)) { ok = false; note = `「${c.name}」的 cost 要大於 0`; break; }
+  }
+  log(ok, "content.js：符籙設定合法", note);
+})();
+
+(() => {
+  const ids = new Set();
+  let ok = true, note = "";
+  for (const m of CONTENT.materials) {
+    if (ids.has(m.id)) { ok = false; note = `天才地寶 id 重複了：${m.id}`; break; }
+    ids.add(m.id);
+    if (!m.name) { ok = false; note = `${m.id} 沒有名字`; break; }
+  }
+  log(ok, "content.js：天才地寶設定合法", note);
+})();
+
+// 每層魔王需要多少戰力 vs 各境界的戰力 —— 純資訊，看關卡卡在哪個境界
+(() => {
+  const lines = CONTENT.layers.map((l, i) => {
+    const need = l.bossHp / CONTENT.combat.bossTimeLimit;
+    // 找出第一個裸戰力就打得過的境界
+    const r = CONTENT.realms.find((x) => x.power >= need);
+    return `${i + 1}.${l.name} 需 ${Economy.formatNumber(need)}（${r ? r.name : "要靠功法法寶靈寵"}）`;
+  });
+  const d = document.createElement("div");
+  d.className = "case";
+  d.style.color = "#8b93a7";
+  d.textContent = "（歷練參考）各層魔王需要的戰力 → " + lines.join("　");
+  out.appendChild(d);
+})();
+
+// 全部法寶買下來要多少悟性 vs 全破一輪能拿多少 —— 純資訊
+(() => {
+  const treaCost = CONTENT.treasures.reduce((a, b) => a + b.cost, 0);
+  const petCost = CONTENT.pets.reduce((a, p) => a + (p.cost || 0), 0);
+  const fromRealms = CONTENT.realms.reduce((a, r) => a + (r.insight || 0), 0);
+  const fromLayers = CONTENT.layers.reduce((a, l) => a + (l.insight || 0), 0);
+  const d = document.createElement("div");
+  d.className = "case";
+  d.style.color = "#8b93a7";
+  d.textContent = `（悟性收支）要花：法寶 ${treaCost} + 商店靈寵 ${petCost} = ${treaCost + petCost}。`
+    + `　能拿：突破 ${fromRealms}（每關剛好達標就衝）+ 打怪通關 ${fromLayers} = ${fromRealms + fromLayers}。`
+    + `　囤靈氣再突破可以拿更多（開根號成長）。`;
+  out.appendChild(d);
+})();
+
+// 節奏檢查：純資訊，不是對錯 —— 讓你一眼看出每個境界大概要花多久
+(() => {
+  const r = CONTENT.realms;
+  const ratios = [];
+  for (let i = 2; i < r.length; i++) {
+    const reqGrowth = r[i].requirement / r[i - 1].requirement;
+    const multGrowth = r[i].multiplier / r[i - 1].multiplier;
+    ratios.push(reqGrowth / multGrowth);
+  }
+  const avg = ratios.reduce((a, b) => a + b, 0) / ratios.length;
+  const d = document.createElement("div");
+  d.className = "case";
+  d.style.color = "#8b93a7";
+  d.textContent = `（節奏參考）每個境界約是前一個的 ${avg.toFixed(2)} 倍時間。`
+    + `想放慢就調高 requirement 的倍數，想加快就調高 multiplier 的倍數。`;
+  out.appendChild(d);
+})();
+
+// --- 總結 ----------------------------------------------------
+const s = document.getElementById("summary");
+s.className = failed === 0 ? "ok" : "bad";
+s.textContent = failed === 0
+  ? `全部通過（${passed} 項）`
+  : `${failed} 項失敗、${passed} 項通過`;
+</script>
+</body>
+</html>

@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+
+<!-- viewport-fit=cover：讓畫面延伸到瀏海和 Home Indicator 底下，
+     再用 CSS 的 env(safe-area-inset-*) 把內容推回安全區。
+     user-scalable=no：連點時不要縮放。 -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+
+<!-- 從主畫面啟動時全螢幕、沒有網址列，看起來就是一個 App -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="問道">
+<meta name="theme-color" content="#0e1015">
+
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+
+<title>問道</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div id="app">
+
+  <header id="header">
+    <h1 id="game-title"></h1>
+    <div id="badges">
+      <div id="realm-badge">
+        <span id="realm-name"></span>
+        <span id="realm-mult"></span>
+      </div>
+      <div id="insight-badge">
+        <span id="insight-symbol"></span>
+        <span id="insight">0</span>
+      </div>
+    </div>
+  </header>
+
+  <section id="counter">
+    <div id="money-line">
+      <span id="currency-symbol"></span>
+      <span id="money">0</span>
+    </div>
+    <div id="currency-name"></div>
+    <div id="rate"></div>
+    <div id="buffs"></div>
+  </section>
+
+  <section id="click-area">
+    <button id="click-button">
+      <span id="click-button-label"></span>
+    </button>
+    <div id="click-fx"></div>
+  </section>
+
+  <section id="breakthrough-area">
+    <button id="breakthrough-button">
+      <div id="bt-fill"></div>
+      <div id="bt-text">
+        <span id="bt-label"></span>
+        <span id="bt-right">
+          <span id="bt-rate"></span>
+          <span id="bt-progress"></span>
+        </span>
+      </div>
+    </button>
+  </section>
+
+  <section id="shop">
+    <div id="shop-tabs">
+      <button class="tab active" data-tab="gen">修煉</button>
+      <button class="tab" data-tab="tech">功法<span class="tab-badge" id="badge-tech"></span></button>
+      <button class="tab" data-tab="trea">法寶<span class="tab-badge" id="badge-trea"></span></button>
+      <button class="tab" data-tab="battle">歷練</button>
+      <button class="tab" data-tab="pet">靈寵<span class="tab-badge" id="badge-pet"></span></button>
+    </div>
+    <div id="shop-bar">
+      <span id="shop-hint"></span>
+      <div id="buy-amount"></div>
+    </div>
+
+    <div id="panel-gen" class="panel"></div>
+    <div id="panel-tech" class="panel hidden"></div>
+    <div id="panel-trea" class="panel hidden"></div>
+
+    <!-- 歷練：掛著它自己會打 -->
+    <div id="panel-battle" class="panel hidden">
+      <div id="battle-head">
+        <span id="battle-layer"></span>
+        <span id="battle-power"></span>
+      </div>
+      <div id="battle-card">
+        <div id="enemy-icon"></div>
+        <div id="enemy-name"></div>
+        <div id="enemy-hpbar"><div id="enemy-hpfill"></div></div>
+        <div id="enemy-hptext"></div>
+        <div id="boss-timer"></div>
+        <div id="battle-stuck"></div>
+      </div>
+      <div id="battle-progress"></div>
+      <div id="materials-head">天才地寶</div>
+      <div id="materials-list"></div>
+    </div>
+
+    <!-- 靈寵：只能帶一隻 -->
+    <div id="panel-pet" class="panel hidden"></div>
+  </section>
+
+  <footer id="footer">
+    <span id="version"></span>
+    <span id="save-status">已存檔</span>
+    <button id="transfer-button">搬存檔</button>
+    <button id="reset-button">重置存檔</button>
+  </footer>
+
+  <!-- 機緣：隨機飄出來，限時內點到就觸發。
+       放在 #app 裡面（而不是 body 底下）才不會在桌機上飄到版面外 -->
+  <button id="fortune"><span id="fortune-icon"></span></button>
+
+</div>
+
+<!-- 領到機緣後的提示 -->
+<div id="toast">
+  <span id="toast-icon"></span>
+  <span id="toast-text">
+    <span id="toast-title"></span>
+    <span id="toast-body"></span>
+  </span>
+</div>
+
+<!-- 離線結算 -->
+<div id="offline-modal" class="modal">
+  <div class="modal-card">
+    <div class="modal-title">歸來</div>
+    <div class="modal-body">
+      你離開了 <span id="offline-time"></span>，<br>
+      這段期間又精進了
+    </div>
+    <div id="offline-earned" class="modal-figure"></div>
+    <div id="offline-combat"></div>
+    <button id="offline-ok" class="btn-primary">收功</button>
+  </div>
+</div>
+
+<!-- 突破前的確認：這個動作會清空玩家的靈氣、設施與功法，一定要先問 -->
+<div id="confirm-modal" class="modal">
+  <div class="modal-card">
+    <div class="modal-title">突破境界</div>
+    <div id="confirm-transition">
+      <span id="confirm-from"></span>
+      <span id="confirm-arrow">→</span>
+      <span id="confirm-to"></span>
+    </div>
+    <div id="confirm-rate"></div>
+    <ul id="confirm-costs">
+      <li id="confirm-lose-money"></li>
+      <li>所有修煉設施與功法散去</li>
+      <li id="confirm-gain"></li>
+      <li id="confirm-insight"></li>
+    </ul>
+    <button id="confirm-talisman">
+      <span id="talisman-box"></span>
+      <span id="talisman-text"></span>
+    </button>
+    <div class="modal-buttons">
+      <button id="confirm-cancel" class="btn-ghost">再想想</button>
+      <button id="confirm-ok" class="btn-primary">衝關</button>
+    </div>
+  </div>
+</div>
+
+<!-- 突破成功 -->
+<div id="realmup-modal" class="modal">
+  <div class="modal-card">
+    <div id="realmup-eyebrow">突破成功</div>
+    <div id="realmup-name"></div>
+    <div id="realmup-note"></div>
+    <div id="realmup-mult" class="modal-figure"></div>
+    <div id="realmup-insight"></div>
+    <button id="realmup-ok" class="btn-primary">繼續修行</button>
+  </div>
+</div>
+
+<!-- 搬存檔：存檔綁在網址上，換網址（例如從區網搬到 GitHub Pages）不會自己跟過去 -->
+<div id="transfer-modal" class="modal">
+  <div class="modal-card">
+    <div class="modal-title">搬存檔</div>
+    <div class="modal-body">
+      存檔是綁在網址上的。<br>
+      換到新網址時，把這串字複製過去貼上。
+    </div>
+    <textarea id="transfer-text" spellcheck="false"></textarea>
+    <div id="transfer-hint"></div>
+    <div class="modal-buttons">
+      <button id="transfer-copy" class="btn-ghost">複製</button>
+      <button id="transfer-import" class="btn-primary">貼上並匯入</button>
+    </div>
+    <button id="transfer-close" class="btn-ghost">關閉</button>
+  </div>
+</div>
+
+<!-- 渡劫失敗 -->
+<div id="fail-modal" class="modal">
+  <div class="modal-card">
+    <div id="fail-eyebrow">功虧一簣</div>
+    <div id="fail-name"></div>
+    <div class="modal-body">
+      天劫加身，滿身靈氣潰散。<br>
+      所幸境界、設施、功法俱在——<br>
+      不過是白跑一輪。
+    </div>
+    <div id="fail-lost" class="modal-figure"></div>
+    <button id="fail-ok" class="btn-primary">再來</button>
+  </div>
+</div>
+
+<script src="js/content.js"></script>
+<script src="js/economy.js"></script>
+<script src="js/state.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/main.js"></script>
+
+<script>
+// 註冊 service worker，讓沒網路時也能玩。
+// 在區網的 http:// 底下這裡一定會失敗（瀏覽器只允許 HTTPS 或 localhost），
+// 那是正常的，所以安靜地吞掉 —— 推上 GitHub Pages 之後它才會真的生效。
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("./sw.js").catch(() => {});
+  });
+}
+</script>
+</body>
+</html>
