@@ -130,6 +130,15 @@ const blankState = (realm = 0) => {
   return s;
 };
 
+// 底下好幾個區塊都會用到，宣告在最前面。
+// （放在後面的話，前面的區塊一碰就會踩到 const 的暫時性死區，整個腳本直接爆掉。）
+const bossPet = CONTENT.pets.find((p) => !p.cost);      // 打魔王收服的
+const shopPet = CONTENT.pets.find((p) => p.cost > 0);   // 商店用悟性請的
+const talisman = CONTENT.consumables.find((c) => c.effect === "guaranteeBreakthrough");
+const buffOutcome = CONTENT.fortunes.outcomes.find((o) => o.type === "buff" && o.value > 1);
+const demonOutcome = CONTENT.fortunes.outcomes.find((o) => o.value < 1);
+const always = (v) => () => v;  // 注入用的假 rng
+
 (() => {
   const state = blankState();
   eq("totalRate：全空 = 0", Economy.totalRate(state), 0);
@@ -183,8 +192,6 @@ is("nextRealm：最高境界沒有下一關 = null",
 
 // --- 突破：成功 ----------------------------------------------
 // rng 是注入的，所以隨機性測得到。always(0) = 必定成功、always(0.999) = 幾乎必定失敗。
-const always = (v) => () => v;
-
 (() => {
   const s = blankState(0);
   const first = CONTENT.generators[0];
@@ -399,9 +406,6 @@ const always = (v) => () => v;
 })();
 
 // --- 機緣：增益 ----------------------------------------------
-const buffOutcome = CONTENT.fortunes.outcomes.find((o) => o.type === "buff" && o.value > 1);
-const demonOutcome = CONTENT.fortunes.outcomes.find((o) => o.value < 1);
-
 (() => {
   const s = blankState(0);
   const now = 1000000;
@@ -566,6 +570,62 @@ const demonOutcome = CONTENT.fortunes.outcomes.find((o) => o.value < 1);
   is("claimFortune：已經飛走的領不到", State.claimFortune(s, now), null);
 })();
 
+// --- 搬存檔 --------------------------------------------------
+(() => {
+  const KEY = "idle-save-v1";
+  const backup = localStorage.getItem(KEY);
+
+  const s = State.create();
+  s.money = 12345.678;
+  s.realm = 4;
+  s.insight = 27;
+  s.owned[CONTENT.generators[0].id] = 33;
+  s.pets[bossPet.id] = { level: 3 };
+  s.equipped = bossPet.id;
+  s.materials.m_dew = 9;
+  s.fortunesClaimed = 2;
+
+  const text = State.exportSave(s);
+  log(typeof text === "string" && text.length > 0, "exportSave：吐出一串字", `長度 ${text.length}`);
+
+  const back = State.importSave(text);
+  log(back !== null, "importSave：吃得回自己吐出來的東西");
+  eq("importSave：靈氣", back.money, s.money);
+  is("importSave：境界", back.realm, 4);
+  is("importSave：悟性", back.insight, 27);
+  is("importSave：設施", back.owned[CONTENT.generators[0].id], 33);
+  is("importSave：靈寵等級", Economy.petLevel(back, bossPet.id), 3);
+  is("importSave：帶著的靈寵", back.equipped, bossPet.id);
+  is("importSave：天才地寶", back.materials.m_dew, 9);
+  is("importSave：領過的機緣數", back.fortunesClaimed, 2);
+
+  // 亂七八糟的輸入不能爆，也不能弄壞現有存檔
+  const good = State.exportSave(s);
+  localStorage.setItem(KEY, JSON.stringify(s));
+  for (const junk of ["", "這根本不是存檔", "!!!!", "eyJib2d1cw==", null, undefined, "{}"]) {
+    const r = State.importSave(junk);
+    log(r === null || (r && typeof r === "object"),
+        `importSave：亂輸入不會爆（${JSON.stringify(junk)}）`, String(r));
+  }
+  const still = State.load();
+  log(still && Math.abs(still.money - s.money) < 1e-6,
+      "importSave：匯入失敗時不會弄壞原本的存檔",
+      still && `原本 ${s.money} → 現在 ${still.money}`);
+
+  // 匯入的字串是使用者貼進來的，不能當可信資料 —— 要走 load() 的防呆
+  const evil = State.exportSave(Object.assign(State.create(), {
+    money: "一千萬", realm: 9999, insight: -50,
+    equipped: "__proto__", pets: {},
+  }));
+  const cleaned = State.importSave(evil);
+  is("importSave：壞掉的靈氣被清成 0", cleaned && cleaned.money, 0);
+  is("importSave：超界的境界被夾住", cleaned && cleaned.realm, CONTENT.realms.length - 1);
+  is("importSave：負的悟性被清成 0", cleaned && cleaned.insight, 0);
+  is("importSave：憑空帶的靈寵被清掉", cleaned && cleaned.equipped, null);
+
+  if (backup !== null) localStorage.setItem(KEY, backup); else localStorage.removeItem(KEY);
+})();
+
 // --- 機緣：第一顆要來得快 ------------------------------------
 (() => {
   const now = 1000000;
@@ -658,9 +718,6 @@ const demonOutcome = CONTENT.fortunes.outcomes.find((o) => o.value < 1);
 })();
 
 // --- 靈寵 ----------------------------------------------------
-const bossPet = CONTENT.pets.find((p) => !p.cost);
-const shopPet = CONTENT.pets.find((p) => p.cost > 0);
-
 (() => {
   eq("petValue：Lv1 = base", Economy.petValue(bossPet, 1), bossPet.base);
   eq("petValue：Lv3 = base + perLevel×2",
@@ -813,8 +870,6 @@ const shopPet = CONTENT.pets.find((p) => p.cost > 0);
 })();
 
 // --- 符籙 ----------------------------------------------------
-const talisman = CONTENT.consumables.find((c) => c.effect === "guaranteeBreakthrough");
-
 (() => {
   const s = blankState(0);
   s.insight = talisman.cost * 2;
