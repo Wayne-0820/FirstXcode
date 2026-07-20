@@ -151,11 +151,11 @@ const Game = (() => {
 
     const owned = state.owned[genId];
     const n = buyAmount === "max"
-      ? Economy.maxAffordable(gen, owned, state.money)
+      ? Economy.maxAffordable(gen, owned, state.money, state)
       : buyAmount;
     if (n <= 0) return;
 
-    const cost = Economy.costOfN(gen, owned, n);
+    const cost = Economy.costOfN(gen, owned, n, state);
     if (cost > state.money) return; // 買不起就整筆不成交，不做部分購買
 
     state.money -= cost;

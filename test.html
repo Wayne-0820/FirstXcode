@@ -1260,21 +1260,98 @@ is("formatDuration：3725 秒", Economy.formatDuration(3725), "1 小時 2 分");
   out.appendChild(d);
 })();
 
-// 節奏檢查：純資訊，不是對錯 —— 讓你一眼看出每個境界大概要花多久
+// ★ 真的模擬一次通關，而不是比對數值的成長比。
+//
+// 舊版這裡只比「門檻成長 ÷ 倍率成長」就說每關 2 倍時間 —— 那是假的安心：
+// 它完全沒算重建設施的成本，而真正的破台速度就是被那個決定的。
+// 實測純掛機 1.19 小時全破，這個檢查卻一路顯示綠燈。
+//
+// 現在改成跑一次真的模擬。數字會慢一點跑出來，但它不會騙你。
 (() => {
-  const r = CONTENT.realms;
-  const ratios = [];
-  for (let i = 2; i < r.length; i++) {
-    const reqGrowth = r[i].requirement / r[i - 1].requirement;
-    const multGrowth = r[i].multiplier / r[i - 1].multiplier;
-    ratios.push(reqGrowth / multGrowth);
+  const fmt = (t) => t < 60 ? t.toFixed(0) + " 秒"
+    : t < 3600 ? (t / 60).toFixed(1) + " 分"
+    : (t / 3600).toFixed(1) + " 小時";
+
+  // 從第 i 境界重新開始，要多久才攢到突破的門檻。
+  // 策略：只花一半、留一半（全花光就永遠存不到突破門檻）。
+  // 不點擊、不吃機緣、不打怪 —— 這是最保守的下限。
+  function timeToNext(i) {
+    const s = State.create();
+    s.realm = i;
+    const need = CONTENT.realms[i + 1].requirement;
+    let t = 0;
+
+    // 開局沒產量，先靠打坐（假設每秒 5 下）買到第一座設施
+    while (Economy.totalRate(s) <= 0 && t < 3600) {
+      s.money += Economy.clickPower(s) * 5;
+      t += 1;
+      for (const g of CONTENT.generators) {
+        const c = Economy.costOf(g, s.owned[g.id], s);
+        if (c <= s.money) { s.money -= c; s.owned[g.id]++; break; }
+      }
+    }
+
+    let guard = 0;
+    while (s.money < need && t < 90 * 24 * 3600 && guard++ < 30000) {
+      let bought = true;
+      while (bought) {
+        bought = false;
+        let best = null, br = 0;
+        for (const g of CONTENT.generators) {
+          const c = Economy.costOf(g, s.owned[g.id], s);
+          if (c > s.money / 2) continue;
+          const r = g.baseRate / c; // CP 值最高的優先
+          if (r > br) { br = r; best = g; }
+        }
+        if (best) {
+          s.money -= Economy.costOf(best, s.owned[best.id], s);
+          s.owned[best.id]++;
+          bought = true;
+        }
+      }
+      const rate = Economy.totalRate(s);
+      if (rate <= 0) break;
+      // 事件驅動：直接跳到「下次買得起」或「攢夠門檻」，不要一格一格爬
+      let cheapest = Infinity;
+      for (const g of CONTENT.generators) {
+        cheapest = Math.min(cheapest, Economy.costOf(g, s.owned[g.id], s) * 2);
+      }
+      const dt = Math.max(Math.min((cheapest - s.money) / rate, (need - s.money) / rate), 0.05);
+      s.money += rate * dt;
+      t += dt;
+    }
+    return t;
   }
-  const avg = ratios.reduce((a, b) => a + b, 0) / ratios.length;
+
+  const per = [];
+  let total = 0;
+  for (let i = 0; i < CONTENT.realms.length - 1; i++) {
+    const t = timeToNext(i);
+    total += t;
+    per.push(CONTENT.realms[i + 1].name + " " + fmt(t));
+  }
+
+  // 太快就是壞掉了。一小時全破的遊戲沒有放置可言。
+  log(total >= 8 * 3600,
+      `破台時間：純掛機全破 ${fmt(total)}（至少要 8 小時才合理）`,
+      per.join("　"));
+
+  // 每一關都該比前一關久。變快就代表經濟在後期崩了。
+  let monotonic = true, badAt = "";
+  const times = CONTENT.realms.slice(1).map((r, i) => ({ name: r.name, t: timeToNext(i) }));
+  for (let i = 2; i < times.length; i++) {
+    if (times[i].t < times[i - 1].t * 0.8) {
+      monotonic = false;
+      badAt = `${times[i].name}（${fmt(times[i].t)}）比 ${times[i-1].name}（${fmt(times[i-1].t)}）還快`;
+      break;
+    }
+  }
+  log(monotonic, "破台節奏：越後面的境界越久（變快就是經濟崩了）", badAt);
+
   const d = document.createElement("div");
   d.className = "case";
   d.style.color = "#8b93a7";
-  d.textContent = `（節奏參考）每個境界約是前一個的 ${avg.toFixed(2)} 倍時間。`
-    + `想放慢就調高 requirement 的倍數，想加快就調高 multiplier 的倍數。`;
+  d.textContent = "（各關耗時）" + per.join("　");
   out.appendChild(d);
 })();
 

@@ -7,10 +7,24 @@
 const Economy = (() => {
   // --- 成本 ------------------------------------------------
 
+  // 境界的「物價」。
+  //
+  // ★ 這是整個經濟能不能成立的關鍵。
+  //
+  // 設施的產量會乘上境界倍率，如果價格不跟著漲，回本時間就會隨境界暴跌 ——
+  // 到飛昇時一座小千世界要 3.3 億、每秒產 2600 億，0.001 秒回本。
+  // 那不叫重建，叫瞬間爆滿，於是後面每一關都只要十幾秒。
+  //
+  // 讓價格跟著倍率走，回本時間才會在每個境界都一樣，
+  // 「重新爬一次」才有意義。
+  function costScale(state) {
+    return state ? realmMultiplier(state) : 1;
+  }
+
   // 第 owned 個之後，「下一個」要多少錢
-  // cost = baseCost × growth^owned
-  function costOf(gen, owned) {
-    return gen.baseCost * Math.pow(gen.costGrowth, owned);
+  // cost = baseCost × 境界物價 × growth^owned
+  function costOf(gen, owned, state) {
+    return gen.baseCost * costScale(state) * Math.pow(gen.costGrowth, owned);
   }
 
   // 一次買 n 個的總價。
@@ -20,14 +34,13 @@ const Economy = (() => {
   //
   //   Σ(i = owned .. owned+n-1) baseCost × g^i
   //     = baseCost × g^owned × (g^n − 1) / (g − 1)
-  function costOfN(gen, owned, n) {
+  function costOfN(gen, owned, n, state) {
     if (n <= 0) return 0;
     const g = gen.costGrowth;
+    const base = gen.baseCost * costScale(state);
     // g = 1 表示不漲價，等比級數的公式會除以零，要另外處理
-    if (g === 1) return gen.baseCost * n;
-    return (
-      (gen.baseCost * Math.pow(g, owned) * (Math.pow(g, n) - 1)) / (g - 1)
-    );
+    if (g === 1) return base * n;
+    return (base * Math.pow(g, owned) * (Math.pow(g, n) - 1)) / (g - 1);
   }
 
   // 手上有 money 的話，最多買得起幾個？
@@ -37,12 +50,13 @@ const Economy = (() => {
   //
   //   money ≥ baseCost × g^owned × (g^n − 1) / (g − 1)
   //   ⟹ n ≤ log( money × (g−1) / (baseCost × g^owned) + 1 ) / log(g)
-  function maxAffordable(gen, owned, money) {
+  function maxAffordable(gen, owned, money, state) {
     if (money <= 0) return 0;
     const g = gen.costGrowth;
-    if (g === 1) return Math.floor(money / gen.baseCost);
+    const base = gen.baseCost * costScale(state);
+    if (g === 1) return Math.floor(money / base);
 
-    const ratio = (money * (g - 1)) / (gen.baseCost * Math.pow(g, owned)) + 1;
+    const ratio = (money * (g - 1)) / (base * Math.pow(g, owned)) + 1;
     if (ratio <= 1) return 0;
 
     let n = Math.floor(Math.log(ratio) / Math.log(g));
@@ -50,8 +64,8 @@ const Economy = (() => {
 
     // 浮點數誤差可能讓結果差一個，這裡往兩邊各校正一次，
     // 確保回傳的 n 真的買得起、而 n+1 真的買不起。
-    while (n > 0 && costOfN(gen, owned, n) > money) n--;
-    while (costOfN(gen, owned, n + 1) <= money) n++;
+    while (n > 0 && costOfN(gen, owned, n, state) > money) n--;
+    while (costOfN(gen, owned, n + 1, state) <= money) n++;
 
     return n;
   }
@@ -297,7 +311,12 @@ const Economy = (() => {
   //
   // 前面的定額項是前期的底線：那時 totalRate 還是 0，分成算出來也是 0。
   function clickPower(state) {
+    // 定額項也要乘境界物價。
+    // 少了這個，突破到飛昇後第一座聚靈陣要 9000 萬，而你打坐一次只有 1 ——
+    // 手上又是 0 靈氣，等於永遠買不起第一座設施，直接卡死。
+    // 乘上去之後，「開局要點幾下才買得起第一座」在每個境界都一樣。
     const flat = CONTENT.clickPower
+      * costScale(state)
       * techniqueMult(state, "click")
       * treasureMult(state, "click");
     return (flat + totalRate(state) * clickShare(state)) * buffMult(state, "click");
@@ -398,6 +417,7 @@ const Economy = (() => {
     costOf,
     costOfN,
     maxAffordable,
+    costScale,
     realmAt,
     currentRealm,
     nextRealm,

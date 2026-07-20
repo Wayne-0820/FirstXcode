@@ -347,8 +347,8 @@ const UI = (() => {
       const owned = state.owned[gen.id];
 
       const n = buyAmount === "max"
-        ? Economy.maxAffordable(gen, owned, state.money) : buyAmount;
-      const cost = Economy.costOfN(gen, owned, Math.max(n, 1));
+        ? Economy.maxAffordable(gen, owned, state.money, state) : buyAmount;
+      const cost = Economy.costOfN(gen, owned, Math.max(n, 1), state);
       const affordable = n > 0 && cost <= state.money;
 
       r.owned.textContent = owned > 0 ? "x" + owned : "";
