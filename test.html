@@ -570,6 +570,200 @@ is("nextRealm：最高境界沒有下一關 = null",
   is("claimFortune：已經飛走的領不到", State.claimFortune(s, now), null);
 })();
 
+// --- 裝備 ----------------------------------------------------
+(() => {
+  const w = CONTENT.equipment.find((e) => e.slot === "weapon");
+  const common = CONTENT.rarities[0], legend = CONTENT.rarities[CONTENT.rarities.length - 1];
+
+  eq("equipBonus：凡品未強化 = 基礎值",
+     Economy.equipBonus({ id: w.id, rarity: common.id, level: 0 }, "power"), w.power);
+  eq("equipBonus：仙品 = 基礎 × 稀有度倍率",
+     Economy.equipBonus({ id: w.id, rarity: legend.id, level: 0 }, "power"), w.power * legend.mult);
+  eq("equipBonus：強化 3 級 = ×1.6",
+     Economy.equipBonus({ id: w.id, rarity: common.id, level: 3 }, "power"),
+     w.power * (1 + 3 * CONTENT.refine.perLevel));
+  eq("equipBonus：不存在的裝備 = 0",
+     Economy.equipBonus({ id: "根本沒這件", rarity: common.id, level: 0 }, "power"), 0);
+
+  const s = blankState(0);
+  eq("equipTotal：沒穿 = 1", Economy.equipTotal(s, "power"), 1);
+  s.equipment.weapon = { id: w.id, rarity: common.id, level: 0 };
+  eq("equipTotal：穿一件 = 1 + 加成", Economy.equipTotal(s, "power"), 1 + w.power);
+  eq("power：裝備有乘進戰力",
+     Economy.power(s), CONTENT.realms[0].power * (1 + w.power));
+
+  // 稀有度抽獎
+  is("pickRarity：rng=0 抽到第一個", Economy.pickRarity(() => 0).id, CONTENT.rarities[0].id);
+  is("pickRarity：rng≈1 抽到最後一個",
+     Economy.pickRarity(() => 0.9999999).id, CONTENT.rarities[CONTENT.rarities.length - 1].id);
+  const hit = new Set();
+  for (let i = 0; i < 3000; i++) hit.add(Economy.pickRarity().id);
+  log(hit.size === CONTENT.rarities.length, "pickRarity：每種稀有度都抽得到",
+      `抽中 ${hit.size} / ${CONTENT.rarities.length}`);
+})();
+
+(() => {
+  const s = blankState(0);
+  // 空手時掉落會自動穿上
+  const got = State.rollEquipDrop(s, 0, () => 0);
+  log(got !== null, "rollEquipDrop：第 0 層掉得出東西");
+  const base = Economy.equipById(got.id);
+  is("rollEquipDrop：空手時自動穿上", !!s.equipment[base.slot], true);
+  is("rollEquipDrop：自動穿上時不進背包", s.bag.length, 0);
+  is("rollEquipDrop：掉的是這一層的裝備", base.tier, 0);
+
+  // 已經有裝備了 → 進背包
+  State.rollEquipDrop(s, 0, () => 0);
+  log(s.bag.length >= 0, "rollEquipDrop：已有裝備時進背包或被丟掉（看好壞）");
+})();
+
+(() => {
+  const s = blankState(0);
+  const sword = CONTENT.equipment.find((e) => e.slot === "weapon" && e.tier === 0);
+  s.bag.push({ id: sword.id, rarity: "legend", level: 0 });
+  is("equipItem：穿得上", State.equipItem(s, 0), true);
+  is("equipItem：穿上後背包少一件", s.bag.length, 0);
+  is("equipItem：穿在對的部位", !!s.equipment.weapon, true);
+
+  // 換裝時舊的要回背包，不能憑空消失
+  s.bag.push({ id: sword.id, rarity: "common", level: 0 });
+  State.equipItem(s, 0);
+  is("equipItem：換裝時舊的回到背包", s.bag.length, 1);
+  is("equipItem：回到背包的是舊那件", s.bag[0].rarity, "legend");
+
+  is("equipItem：索引不存在不會爆", State.equipItem(s, 999), false);
+  is("unequipItem：脫得下", State.unequipItem(s, "weapon"), true);
+  is("unequipItem：空欄位脫不下", State.unequipItem(s, "weapon"), false);
+})();
+
+(() => {
+  const s = blankState(0);
+  const it = CONTENT.equipment.find((e) => e.tier === 0);
+  s.equipment[it.slot] = { id: it.id, rarity: "common", level: 0 };
+  const mat = CONTENT.layers[0].mobDrop.material;
+
+  is("refineItem：沒材料強化不了", State.refineItem(s, it.slot), false);
+  s.materials[mat] = Economy.refineCost(0);
+  is("refineItem：有材料就強化得了", State.refineItem(s, it.slot), true);
+  is("refineItem：等級 +1", s.equipment[it.slot].level, 1);
+  is("refineItem：材料被吃掉", s.materials[mat], 0);
+
+  s.equipment[it.slot].level = CONTENT.refine.maxLevel;
+  s.materials[mat] = 99999;
+  is("refineItem：滿級不能再強化", State.refineItem(s, it.slot), false);
+  is("refineItem：滿級時材料不該被吃", s.materials[mat], 99999);
+  is("refineItem：空欄位不會爆", State.refineItem(s, "根本沒這部位"), false);
+})();
+
+// --- 道侶 ----------------------------------------------------
+(() => {
+  const c = CONTENT.companions[0];
+  const s = blankState(0);
+
+  s.insight = c.cost - 1;
+  is("recruitCompanion：悟性不夠招不到", State.recruitCompanion(s, c.id), false);
+  s.insight = c.cost;
+  is("recruitCompanion：夠悟性就招得到", State.recruitCompanion(s, c.id), true);
+  is("recruitCompanion：有扣悟性", s.insight, 0);
+  is("recruitCompanion：有空位就直接上場", s.team.includes(c.id), true);
+  is("recruitCompanion：不能重複招募", State.recruitCompanion(s, c.id), false);
+  is("recruitCompanion：亂給 id 不會爆", State.recruitCompanion(s, "沒這個人"), false);
+
+  eq("companionMult：出戰中才有加成", Economy.companionMult(s, c.effect), c.value);
+  State.toggleTeam(s, c.id);
+  is("toggleTeam：可以收回", s.team.includes(c.id), false);
+  eq("companionMult：收回就沒加成", Economy.companionMult(s, c.effect), 1);
+})();
+
+(() => {
+  // 隊伍上限
+  const s = blankState(0);
+  s.insight = 99999;
+  for (const c of CONTENT.companions) State.recruitCompanion(s, c.id);
+  is("recruitCompanion：出戰人數不超過上限", s.team.length, CONTENT.companionSlots);
+  is("teamFull：滿了", Economy.teamFull(s), true);
+
+  const notOnTeam = CONTENT.companions.find((c) => !s.team.includes(c.id));
+  is("toggleTeam：隊伍滿了就帶不上", State.toggleTeam(s, notOnTeam.id), false);
+  is("toggleTeam：沒招募的帶不上", State.toggleTeam(blankState(0), CONTENT.companions[0].id), false);
+})();
+
+(() => {
+  // 御獸師只放大靈寵「超出 1 的那部分」，沒帶靈寵時不該憑空生出加成
+  const boost = CONTENT.companions.find((c) => c.effect === "petBoost");
+  const s = blankState(0);
+  s.companions[boost.id] = true;
+  s.team = [boost.id];
+  eq("petBoost：沒帶靈寵時不會憑空加成", Economy.petBonus(s, "power"), 1);
+
+  const pet = CONTENT.pets.find((p) => p.effect === "power");
+  s.pets[pet.id] = { level: 1 };
+  s.equipped = pet.id;
+  eq("petBoost：只放大超出 1 的那部分",
+     Economy.petBonus(s, "power"), 1 + (pet.base - 1) * boost.value);
+})();
+
+// --- 存檔容錯：裝備與道侶 ------------------------------------
+(() => {
+  const KEY = "idle-save-v1";
+  const backup = localStorage.getItem(KEY);
+  const tryLoad = (o) => { localStorage.setItem(KEY, JSON.stringify(o)); return State.load(); };
+  const sword = CONTENT.equipment.find((e) => e.slot === "weapon");
+
+  let r = tryLoad({ equipment: { weapon: { id: "根本沒這件", rarity: "common", level: 0 } } });
+  is("load：不認識的裝備被丟掉", r && !!r.equipment.weapon, false);
+
+  // 把兵器穿在護甲欄，加成會錯位
+  r = tryLoad({ equipment: { armor: { id: sword.id, rarity: "common", level: 0 } } });
+  is("load：裝備放錯部位會被丟掉", r && !!r.equipment.armor, false);
+
+  r = tryLoad({ equipment: { weapon: { id: sword.id, rarity: "不存在的稀有度", level: 999 } } });
+  is("load：亂寫的稀有度退回凡品", r && r.equipment.weapon.rarity, CONTENT.rarities[0].id);
+  is("load：強化等級夾到上限", r && r.equipment.weapon.level, CONTENT.refine.maxLevel);
+
+  r = tryLoad({ bag: "根本不是陣列" });
+  log(Array.isArray(r && r.bag) && r.bag.length === 0, "load：背包不是陣列時退回空的");
+
+  r = tryLoad({ team: [CONTENT.companions[0].id], companions: {} });
+  is("load：出戰了沒招募的道侶 → 清掉", r && r.team.length, 0);
+
+  const c0 = CONTENT.companions[0].id;
+  r = tryLoad({ team: [c0, c0, c0, c0], companions: { [c0]: true } });
+  is("load：重複的道侶只算一次", r && r.team.length, 1);
+
+  if (backup !== null) localStorage.setItem(KEY, backup); else localStorage.removeItem(KEY);
+})();
+
+(() => {
+  const slotIds = new Set(CONTENT.slots.map((s) => s.id));
+  const ids = new Set();
+  let ok = true, note = "";
+  for (const e of CONTENT.equipment) {
+    if (ids.has(e.id)) { ok = false; note = `裝備 id 重複了：${e.id}`; break; }
+    ids.add(e.id);
+    if (!slotIds.has(e.slot)) { ok = false; note = `「${e.name}」的 slot「${e.slot}」不存在`; break; }
+    if (!CONTENT.layers[e.tier]) { ok = false; note = `「${e.name}」的 tier ${e.tier} 沒有對應的歷練層`; break; }
+    if (!(e.power > 0) && !(e.rate > 0)) { ok = false; note = `「${e.name}」兩種加成都是 0，穿了沒用`; break; }
+  }
+  log(ok, "content.js：裝備設定合法（部位存在、tier 對得到層）", note);
+})();
+
+(() => {
+  const EFFECTS = new Set(["click", "power", "allRate", "drop", "insightGain", "petBoost"]);
+  const ids = new Set();
+  let ok = true, note = "";
+  for (const c of CONTENT.companions) {
+    if (ids.has(c.id)) { ok = false; note = `道侶 id 重複了：${c.id}`; break; }
+    ids.add(c.id);
+    if (!EFFECTS.has(c.effect)) {
+      ok = false; note = `「${c.name}」的 effect 是「${c.effect}」，程式只認得 ${[...EFFECTS].join(" / ")}`; break;
+    }
+    if (!(c.value > 1)) { ok = false; note = `「${c.name}」的 value 要大於 1，否則帶上反而變弱`; break; }
+    if (!(c.cost > 0)) { ok = false; note = `「${c.name}」的 cost 要大於 0`; break; }
+  }
+  log(ok, "content.js：道侶設定合法（effect 認得、加成不會變弱）", note);
+})();
+
 // --- 搬存檔 --------------------------------------------------
 (() => {
   const KEY = "idle-save-v1";

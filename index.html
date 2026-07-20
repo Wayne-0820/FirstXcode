@@ -39,6 +39,14 @@
     </div>
   </header>
 
+  <section id="hero">
+    <div id="portrait"></div>
+    <div id="hero-info">
+      <div id="hero-power"></div>
+      <div id="hero-team"></div>
+    </div>
+  </section>
+
   <section id="counter">
     <div id="money-line">
       <span id="currency-symbol"></span>
@@ -75,7 +83,9 @@
       <button class="tab" data-tab="tech">功法<span class="tab-badge" id="badge-tech"></span></button>
       <button class="tab" data-tab="trea">法寶<span class="tab-badge" id="badge-trea"></span></button>
       <button class="tab" data-tab="battle">歷練</button>
+      <button class="tab" data-tab="gear">裝備<span class="tab-badge" id="badge-gear"></span></button>
       <button class="tab" data-tab="pet">靈寵<span class="tab-badge" id="badge-pet"></span></button>
+      <button class="tab" data-tab="team">道侶<span class="tab-badge" id="badge-team"></span></button>
     </div>
     <div id="shop-bar">
       <span id="shop-hint"></span>
@@ -105,8 +115,22 @@
       <div id="materials-list"></div>
     </div>
 
+    <!-- 裝備：六個部位，打怪掉落 -->
+    <div id="panel-gear" class="panel hidden">
+      <div class="section-head">身上</div>
+      <div id="slots"></div>
+      <div id="bag-head">
+        <span class="section-head">背包 <span id="bag-count"></span></span>
+        <button id="sell-junk">丟掉沒用的</button>
+      </div>
+      <div id="bag"></div>
+    </div>
+
     <!-- 靈寵：只能帶一隻 -->
     <div id="panel-pet" class="panel hidden"></div>
+
+    <!-- 道侶：最多帶三個 -->
+    <div id="panel-team" class="panel hidden"></div>
   </section>
 
   <footer id="footer">
@@ -220,6 +244,7 @@
 <script src="js/content.js"></script>
 <script src="js/economy.js"></script>
 <script src="js/state.js"></script>
+<script src="js/portrait.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/main.js"></script>
 

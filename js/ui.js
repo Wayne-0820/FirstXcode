@@ -51,6 +51,9 @@ const UI = (() => {
     el.buyAmount = $("#buy-amount");
     el.shopHint = $("#shop-hint");
     el.buffs = $("#buffs");
+    el.portrait = $("#portrait");
+    el.heroPower = $("#hero-power");
+    el.heroTeam = $("#hero-team");
     el.fortune = $("#fortune");
     el.fortuneIcon = $("#fortune-icon");
     el.fortuneIcon.textContent = CONTENT.fortunes.icon;
@@ -75,6 +78,9 @@ const UI = (() => {
     buildItemRows("#panel-trea", CONTENT.treasures, treaRows, handlers.onBuyTreasure, null);
     buildPetRows(handlers);
     buildMaterialRows();
+    buildSlots(handlers);
+    buildCompanionRows(handlers);
+    $("#sell-junk").addEventListener("click", handlers.onSellJunk);
 
     // 機緣是限時的，用 pointerdown 才不會慢半拍
     el.fortune.addEventListener("pointerdown", (e) => {
@@ -155,7 +161,7 @@ const UI = (() => {
     for (const tab of document.querySelectorAll("#shop-tabs .tab")) {
       tab.classList.toggle("active", tab.dataset.tab === name);
     }
-    for (const p of ["gen", "tech", "trea", "battle", "pet"]) {
+    for (const p of ["gen", "tech", "trea", "battle", "gear", "pet", "team"]) {
       $("#panel-" + p).classList.toggle("hidden", p !== name);
     }
     // 數量選擇只對修煉設施有意義：其他東西都是一次一個
@@ -164,7 +170,9 @@ const UI = (() => {
       name === "tech" ? "靈氣購買・突破後散去"
       : name === "trea" ? "悟性購買・永久保留"
       : name === "battle" ? "掛著它自己會打・離線也在打"
+      : name === "gear" ? "打怪掉落・魔王必掉"
       : name === "pet" ? "只能帶一隻・餵天才地寶升級"
+      : name === "team" ? `最多帶 ${CONTENT.companionSlots} 位・悟性招募`
       : "";
   }
 
@@ -315,10 +323,231 @@ const UI = (() => {
     matRows.set("__empty", { root: empty });
   }
 
+  // --- 裝備 ------------------------------------------------
+
+  const slotRows = new Map();
+
+  function buildSlots(handlers) {
+    const wrap = $("#slots");
+    for (const slot of CONTENT.slots) {
+      const row = document.createElement("div");
+      row.className = "slot-row";
+      row.innerHTML = `
+        <div class="slot-icon"></div>
+        <div class="slot-main">
+          <div class="slot-line1"><span class="slot-name"></span><span class="slot-lv"></span></div>
+          <div class="slot-stat"></div>
+        </div>
+        <button class="slot-refine"></button>`;
+      row.querySelector(".slot-icon").textContent = slot.icon;
+      row.querySelector(".slot-refine").addEventListener("click", () => handlers.onRefine(slot.id));
+      wrap.appendChild(row);
+      slotRows.set(slot.id, {
+        root: row,
+        icon: row.querySelector(".slot-icon"),
+        name: row.querySelector(".slot-name"),
+        lv: row.querySelector(".slot-lv"),
+        stat: row.querySelector(".slot-stat"),
+        refine: row.querySelector(".slot-refine"),
+      });
+    }
+  }
+
+  function statText(it) {
+    const p = Economy.equipBonus(it, "power");
+    const r = Economy.equipBonus(it, "rate");
+    const parts = [];
+    if (p > 0) parts.push("戰力 +" + Math.round(p * 100) + "%");
+    if (r > 0) parts.push("靈氣 +" + Math.round(r * 100) + "%");
+    return parts.join("　") || "—";
+  }
+
+  function renderSlots(state) {
+    let canRefine = 0;
+    for (const slot of CONTENT.slots) {
+      const r = slotRows.get(slot.id);
+      const it = (state.equipment || {})[slot.id];
+
+      if (!it) {
+        r.root.classList.add("empty");
+        r.icon.textContent = slot.icon;
+        r.icon.style.color = "";
+        r.name.textContent = slot.name;
+        r.name.style.color = "";
+        r.lv.textContent = "";
+        r.stat.textContent = "尚未穿戴";
+        r.refine.textContent = "";
+        r.refine.className = "slot-refine hidden";
+        continue;
+      }
+
+      const base = Economy.equipById(it.id);
+      const rar = Economy.rarityById(it.rarity);
+      r.root.classList.remove("empty");
+      r.icon.textContent = base.icon;
+      r.name.textContent = rar.name + base.name;
+      r.name.style.color = rar.color;
+      r.lv.textContent = it.level > 0 ? "+" + it.level : "";
+      r.stat.textContent = statText(it);
+
+      if (it.level >= CONTENT.refine.maxLevel) {
+        r.refine.textContent = "已滿";
+        r.refine.className = "slot-refine";
+        r.refine.disabled = true;
+      } else {
+        const layer = CONTENT.layers[base.tier];
+        const mat = CONTENT.materials.find((m) => m.id === layer.mobDrop.material);
+        const cost = Economy.refineCost(it.level);
+        const can = (state.materials[mat.id] || 0) >= cost;
+        if (can) canRefine++;
+        r.refine.textContent = `強化 ${mat.icon}${cost}`;
+        r.refine.className = "slot-refine" + (can ? " can" : "");
+        r.refine.disabled = !can;
+      }
+    }
+    return canRefine;
+  }
+
+  // 背包只有內容變了才重建 —— 但可換裝的數量要記住，
+  // 否則沒重建的那幾幀徽章會歸零，看起來像在閃。
+  let lastBagKey = "";
+  let lastUpgrades = 0;
+
+  function renderBag(state, handlers) {
+    const bag = state.bag || [];
+    $("#bag-count").textContent = bag.length ? `${bag.length} 件` : "";
+
+    const key = bag.map((i) => i.id + i.rarity + i.level).join(",")
+      + "|" + CONTENT.slots.map((s) => {
+          const it = (state.equipment || {})[s.id];
+          return it ? it.id + it.rarity + it.level : "-";
+        }).join(",");
+    if (key === lastBagKey) return lastUpgrades;
+    lastBagKey = key;
+
+    const wrap = $("#bag");
+    wrap.innerHTML = "";
+    let upgrades = 0;
+
+    if (!bag.length) {
+      const empty = document.createElement("div");
+      empty.className = "panel-empty";
+      empty.textContent = "打怪就會掉。魔王必掉一件。";
+      wrap.appendChild(empty);
+      lastUpgrades = 0;
+      return 0;
+    }
+
+    bag.forEach((it, idx) => {
+      const base = Economy.equipById(it.id);
+      const rar = Economy.rarityById(it.rarity);
+      const better = Economy.isUpgrade(state, it);
+      if (better) upgrades++;
+
+      const row = document.createElement("button");
+      row.className = "bag-item" + (better ? " better" : "");
+      row.innerHTML = `
+        <span class="bag-icon">${base.icon}</span>
+        <span class="bag-main">
+          <span class="bag-name"></span>
+          <span class="bag-stat"></span>
+        </span>
+        <span class="bag-act">${better ? "換上" : "穿"}</span>`;
+      const nameEl = row.querySelector(".bag-name");
+      nameEl.textContent = rar.name + base.name + (it.level ? " +" + it.level : "");
+      nameEl.style.color = rar.color;
+      row.querySelector(".bag-stat").textContent = statText(it);
+      row.addEventListener("click", () => handlers.onEquipItem(idx));
+      wrap.appendChild(row);
+    });
+    lastUpgrades = upgrades;
+    return upgrades;
+  }
+
+  // --- 道侶 ------------------------------------------------
+
+  const compRows = new Map();
+
+  function buildCompanionRows(handlers) {
+    const panel = $("#panel-team");
+    for (const c of CONTENT.companions) {
+      const row = document.createElement("div");
+      row.className = "comp-row";
+      row.innerHTML = `
+        <div class="comp-icon"></div>
+        <div class="comp-main">
+          <div class="comp-name"></div>
+          <div class="comp-quote"></div>
+          <div class="comp-effect"></div>
+        </div>
+        <button class="comp-act"></button>`;
+      row.querySelector(".comp-icon").textContent = c.icon;
+      row.querySelector(".comp-name").textContent = c.name;
+      row.querySelector(".comp-quote").textContent = c.quote;
+      row.querySelector(".comp-effect").textContent = c.desc;
+      const btn = row.querySelector(".comp-act");
+      btn.addEventListener("click", () => {
+        if (btn.dataset.mode === "recruit") handlers.onRecruit(c.id);
+        else handlers.onToggleTeam(c.id);
+      });
+      panel.appendChild(row);
+      compRows.set(c.id, { root: row, act: btn });
+    }
+  }
+
+  function renderCompanions(state) {
+    const team = state.team || [];
+    let actionable = 0;
+
+    for (const c of CONTENT.companions) {
+      const r = compRows.get(c.id);
+      const owned = Economy.companionOwned(state, c.id);
+      const onTeam = team.includes(c.id);
+
+      r.root.classList.toggle("owned", owned);
+      r.root.classList.toggle("active", onTeam);
+
+      if (!owned) {
+        const can = state.insight >= c.cost;
+        if (can) actionable++;
+        r.act.textContent = `招募 ${CONTENT.insightCurrency.symbol}${c.cost}`;
+        r.act.className = "comp-act" + (can ? " can" : "");
+        r.act.dataset.mode = "recruit";
+        r.act.disabled = !can;
+      } else if (onTeam) {
+        r.act.textContent = "出戰中";
+        r.act.className = "comp-act on";
+        r.act.dataset.mode = "toggle";
+        r.act.disabled = false;
+      } else {
+        const full = Economy.teamFull(state);
+        r.act.textContent = full ? "隊伍已滿" : "帶上";
+        r.act.className = "comp-act" + (full ? "" : " can");
+        r.act.dataset.mode = "toggle";
+        r.act.disabled = full;
+      }
+    }
+
+    // 頂上那排小頭像
+    const chips = team.map((id) => {
+      const c = Economy.companionById(id);
+      return c ? `<span class="team-chip">${c.icon}</span>` : "";
+    }).join("");
+    const slots = CONTENT.companionSlots - team.length;
+    el.heroTeam.innerHTML = chips + '<span class="team-chip empty">·</span>'.repeat(Math.max(slots, 0));
+
+    return actionable;
+  }
+
   // --- 每幀更新 --------------------------------------------
 
-  function render(state, buyAmount) {
+  function render(state, buyAmount, handlers) {
     const realm = Economy.currentRealm(state);
+
+    Portrait.render(el.portrait, state); // 只在境界或裝備變了時才重畫
+    el.heroPower.textContent = "戰力 " + Economy.formatNumber(Economy.power(state));
+    setBadge("#badge-gear", renderSlots(state) + renderBag(state, handlers));
+    setBadge("#badge-team", renderCompanions(state));
 
     el.money.textContent = Economy.formatNumber(state.money);
     el.rate.textContent = "每秒 +" + Economy.formatNumber(Economy.totalRate(state));

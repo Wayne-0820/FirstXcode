@@ -11,6 +11,8 @@ const Game = (() => {
   const AUTOSAVE_INTERVAL_MS = 10000;
   const OFFLINE_POPUP_THRESHOLD_SEC = 60;
 
+  let handlers; // render 要用它幫背包的列綁事件
+
   function init() {
     const loaded = State.load();
     let offlineSeconds = 0;
@@ -31,7 +33,7 @@ const Game = (() => {
       State.scheduleFortune(state, Date.now());
     }
 
-    UI.build({
+    handlers = {
       onClick,
       onBuy,
       onBuyTechnique,
@@ -41,13 +43,19 @@ const Game = (() => {
       onFeedPet,
       onEquipPet,
       onClaimFortune,
+      onEquipItem,
+      onRefine,
+      onSellJunk,
+      onRecruit,
+      onToggleTeam,
       onBuyAmountChange,
       onBreakthroughRequest,
       onBreakthroughConfirm,
       onTransferOpen,
       onTransferImport,
       onReset,
-    });
+    };
+    UI.build(handlers);
 
     if (offlineSeconds >= OFFLINE_POPUP_THRESHOLD_SEC && offlineEarned > 0) {
       UI.showOffline(offlineEarned, offlineSeconds, offlineCombat);
@@ -86,7 +94,7 @@ const Game = (() => {
       UI.flashSaved();
     }
 
-    UI.render(state, buyAmount);
+    UI.render(state, buyAmount, handlers);
     requestAnimationFrame(loop);
   }
 
@@ -191,6 +199,15 @@ const Game = (() => {
     else UI.showFail(result.realm, lost);
   }
 
+  function onEquipItem(idx) { State.equipItem(state, idx); }
+  function onRefine(slotId) { State.refineItem(state, slotId); }
+  function onSellJunk() {
+    const n = State.sellJunk(state);
+    if (n > 0) UI.flashSaved();
+  }
+  function onRecruit(id) { State.recruitCompanion(state, id); }
+  function onToggleTeam(id) { State.toggleTeam(state, id); }
+
   function onTransferOpen() {
     State.save(state); // 先存一次，匯出的才是當下最新的進度
     lastAutosave = Date.now();
@@ -204,6 +221,7 @@ const Game = (() => {
       return;
     }
     state = loaded;
+    Portrait.reset(); // 匯入的存檔境界與裝備都不同，立繪要重畫
     lastTick = Date.now();
     lastAutosave = Date.now();
     UI.transferHint("匯入成功，進度已接上", true);
@@ -213,6 +231,8 @@ const Game = (() => {
     if (!confirm("確定要清掉存檔、從頭開始嗎？這個動作無法復原。")) return;
     State.clear();
     state = State.create();
+    State.scheduleFortune(state, Date.now());
+    Portrait.reset(); // 不重設的話會留著舊境界的立繪
     lastTick = Date.now();
     lastAutosave = Date.now();
   }

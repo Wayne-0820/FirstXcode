@@ -279,6 +279,111 @@ const CONTENT = {
   ],
 
   // ----------------------------------------------------------
+  //  裝備：打怪會掉，六個部位各戴一件。
+  //
+  //  稀有度只影響數值：同一件裝備抽到仙品比凡品強一倍多。
+  //  掉落時隨機決定稀有度，所以同一層可以一直刷更好的。
+  // ----------------------------------------------------------
+  rarities: [
+    { id: "common", name: "凡品", color: "#8b93a7", weight: 60, mult: 1 },
+    { id: "rare",   name: "靈品", color: "#5eead4", weight: 28, mult: 1.6 },
+    { id: "epic",   name: "寶品", color: "#a78bfa", weight: 10, mult: 2.4 },
+    { id: "legend", name: "仙品", color: "#f5c451", weight: 2,  mult: 3.5 },
+  ],
+
+  // 部位。order 決定顯示順序，也決定人物立繪上畫在哪。
+  slots: [
+    { id: "weapon", name: "兵器", icon: "🗡" },
+    { id: "armor",  name: "護甲", icon: "🥋" },
+    { id: "helmet", name: "頭冠", icon: "👑" },
+    { id: "boots",  name: "靴履", icon: "👢" },
+    { id: "ring",   name: "戒指", icon: "💍" },
+    { id: "amulet", name: "護符", icon: "🧿" },
+  ],
+
+  // ----------------------------------------------------------
+  //  裝備本體。
+  //
+  //  slot  : 哪個部位
+  //  tier  : 第幾層開始會掉（對應 layers 的索引）
+  //  power : 戰力加成「比例」，0.3 = +30%
+  //  rate  : 靈氣產量加成「比例」，0.05 = +5%
+  //
+  //  ★ 用比例而不是絕對數字，是因為境界戰力會指數成長：
+  //    一把「+2000 戰力」的劍在飛昇（戰力 1000 萬）時等於廢鐵。
+  //    比例則在任何時期都有意義。
+  //
+  //  實際加成 = 比例 × 稀有度倍率 × (1 + 強化等級 × 0.2)
+  // ----------------------------------------------------------
+  equipment: [
+    // 前期
+    { id: "e_sword1",  slot: "weapon", name: "青鋒劍",   icon: "🗡",  tier: 0, power: 0.30, rate: 0 },
+    { id: "e_robe1",   slot: "armor",  name: "粗布道袍", icon: "🥋",  tier: 0, power: 0.10, rate: 0.05 },
+    { id: "e_band1",   slot: "helmet", name: "束髮帶",   icon: "👑",  tier: 1, power: 0.15, rate: 0.05 },
+    { id: "e_boots1",  slot: "boots",  name: "登雲靴",   icon: "👢",  tier: 1, power: 0.15, rate: 0.05 },
+    { id: "e_ring1",   slot: "ring",   name: "聚氣戒",   icon: "💍",  tier: 2, power: 0,    rate: 0.20 },
+    { id: "e_amu1",    slot: "amulet", name: "平安符",   icon: "🧿",  tier: 2, power: 0.25, rate: 0.05 },
+
+    // 中期
+    { id: "e_sword2",  slot: "weapon", name: "赤霄劍",   icon: "⚔️",  tier: 3, power: 0.60, rate: 0 },
+    { id: "e_robe2",   slot: "armor",  name: "玄鐵重甲", icon: "🛡",  tier: 3, power: 0.35, rate: 0.10 },
+    { id: "e_band2",   slot: "helmet", name: "紫金冠",   icon: "👑",  tier: 4, power: 0.35, rate: 0.15 },
+    { id: "e_boots2",  slot: "boots",  name: "踏雪無痕", icon: "👣",  tier: 4, power: 0.35, rate: 0.15 },
+    { id: "e_ring2",   slot: "ring",   name: "納戒",     icon: "💍",  tier: 5, power: 0.15, rate: 0.40 },
+    { id: "e_amu2",    slot: "amulet", name: "山河珮",   icon: "🧿",  tier: 5, power: 0.50, rate: 0.15 },
+
+    // 後期
+    { id: "e_sword3",  slot: "weapon", name: "軒轅劍",   icon: "🗡",  tier: 6, power: 1.00, rate: 0 },
+    { id: "e_robe3",   slot: "armor",  name: "五色霞衣", icon: "🥻",  tier: 6, power: 0.60, rate: 0.20 },
+    { id: "e_band3",   slot: "helmet", name: "通天冠",   icon: "👑",  tier: 7, power: 0.60, rate: 0.25 },
+    { id: "e_boots3",  slot: "boots",  name: "縮地成寸", icon: "👣",  tier: 7, power: 0.60, rate: 0.25 },
+    { id: "e_ring3",   slot: "ring",   name: "乾坤戒",   icon: "💍",  tier: 8, power: 0.30, rate: 0.70 },
+    { id: "e_amu3",    slot: "amulet", name: "太極圖",   icon: "☯️",  tier: 8, power: 0.90, rate: 0.30 },
+
+    // 天門限定
+    { id: "e_sword4",  slot: "weapon", name: "誅仙四劍", icon: "⚔️",  tier: 9, power: 1.80, rate: 0 },
+    { id: "e_robe4",   slot: "armor",  name: "混沌道袍", icon: "🥻",  tier: 9, power: 1.00, rate: 0.45 },
+  ],
+
+  // 強化：每級加多少（相對基礎值），以及升級要幾個天才地寶
+  refine: { perLevel: 0.2, maxLevel: 10, baseCost: 2 },
+
+  // ----------------------------------------------------------
+  //  道侶：可以招募的同伴，跟靈寵不同 —— 道侶可以同時帶三個。
+  //
+  //  effect 跟法寶共用同一套：click / power / allRate / drop / insightGain
+  //  cost   : 用悟性招募
+  //  quote  : 招募時說的話
+  // ----------------------------------------------------------
+  companionSlots: 3,
+  companions: [
+    { id: "c_sword", name: "劍修·蘇沐雪", icon: "🧝‍♀️", cost: 12,
+      effect: "power", value: 2.5, desc: "戰力 ×2.5。",
+      quote: "「我的劍，只認道理。」" },
+    { id: "c_alchemy", name: "丹師·白芷", icon: "👩‍🔬", cost: 15,
+      effect: "allRate", value: 1.8, desc: "靈氣產量 ×1.8。",
+      quote: "「火候差一分，就是毒藥。」" },
+    { id: "c_scholar", name: "書生·顧長卿", icon: "🧑‍🎓", cost: 25,
+      effect: "insightGain", value: 1.5, desc: "突破獲得的悟性 ×1.5。",
+      quote: "「讀萬卷書，不如見一次道。」" },
+    { id: "c_thief", name: "妙手·燕十三", icon: "🥷", cost: 30,
+      effect: "drop", value: 2, desc: "天才地寶掉落 ×2。",
+      quote: "「我不偷東西，我只是先拿走。」" },
+    { id: "c_monk", name: "苦行僧·無妄", icon: "🧘", cost: 40,
+      effect: "click", value: 4, desc: "打坐所得 ×4。",
+      quote: "「坐了六十年，還沒坐通。」" },
+    { id: "c_beast", name: "御獸師·阿蠻", icon: "🧑‍🌾", cost: 55,
+      effect: "petBoost", value: 1.5, desc: "靈寵加成再 ×1.5。",
+      quote: "「牠們比人可靠。」" },
+    { id: "c_ghost", name: "鬼修·夜無聲", icon: "🧛", cost: 80,
+      effect: "power", value: 5, desc: "戰力 ×5。",
+      quote: "「死過一次，就不太怕了。」" },
+    { id: "c_sage", name: "散人·忘機子", icon: "🧙‍♂️", cost: 150,
+      effect: "allRate", value: 4, desc: "靈氣產量 ×4。",
+      quote: "「我什麼都不求，所以什麼都有。」" },
+  ],
+
+  // ----------------------------------------------------------
   //  符籙：消耗品，可以囤，用一張少一張。
   //  在法寶分頁最上面，用悟性買。
   //

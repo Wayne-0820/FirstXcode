@@ -50,6 +50,11 @@ const State = (() => {
       fortune: null,      // 當前飄著的那個 { id, expires, x, y }
       nextFortuneAt: 0,   // 下一個何時出現
       fortunesClaimed: 0, // 領過幾個（第一顆要來得快，用這個判斷）
+      // 裝備與道侶
+      equipment: {},   // { slotId: { id, rarity, level } } 身上穿的
+      bag: [],         // backpack：打到但還沒穿的
+      companions: {},  // { companionId: true } 已招募
+      team: [],        // 出戰的道侶（最多 companionSlots 個）
       lastSave: Date.now(),
     };
   }
@@ -163,6 +168,47 @@ const State = (() => {
       for (const gen of CONTENT.generators) {
         state.owned[gen.id] = Math.max(0, Math.floor(num(data.owned[gen.id], 0)));
       }
+    }
+
+    // --- 裝備 ---
+    // 只留 content.js 裡真的還存在的裝備，等級與稀有度都夾範圍
+    const cleanItem = (raw) => {
+      if (!raw || typeof raw !== "object") return null;
+      const base = Economy.equipById(raw.id);
+      if (!base) return null;
+      const rarity = CONTENT.rarities.some((r) => r.id === raw.rarity)
+        ? raw.rarity : CONTENT.rarities[0].id;
+      const level = Math.min(
+        Math.max(Math.floor(num(raw.level, 0)), 0),
+        CONTENT.refine.maxLevel
+      );
+      return { id: base.id, rarity, level };
+    };
+
+    if (data.equipment && typeof data.equipment === "object") {
+      for (const slot of CONTENT.slots) {
+        const it = cleanItem(data.equipment[slot.id]);
+        // 穿在「兵器」欄的必須真的是兵器，否則加成會錯位
+        if (it && Economy.equipById(it.id).slot === slot.id) state.equipment[slot.id] = it;
+      }
+    }
+    if (Array.isArray(data.bag)) {
+      state.bag = data.bag.map(cleanItem).filter(Boolean).slice(0, 60);
+    }
+
+    // --- 道侶 ---
+    if (data.companions && typeof data.companions === "object") {
+      for (const c of CONTENT.companions) {
+        if (data.companions[c.id]) state.companions[c.id] = true;
+      }
+    }
+    if (Array.isArray(data.team)) {
+      // 出戰的必須真的招募過，而且不能重複、不能超過欄位數
+      const seen = new Set();
+      for (const id of data.team) {
+        if (state.companions[id] && !seen.has(id)) { seen.add(id); state.team.push(id); }
+      }
+      state.team = state.team.slice(0, CONTENT.companionSlots);
     }
 
     // --- 機緣 ---
@@ -373,8 +419,8 @@ const State = (() => {
   //
   // 迴圈是跑「事件」不是跑「幀」：層內的小怪血量都一樣，
   // 所以一次算一隻，總次數頂多是 層數 × (小怪數+1)，跟離線多久無關。
-  function advanceCombat(state, seconds) {
-    const out = { materials: {}, insight: 0, bosses: [], pets: [] };
+  function advanceCombat(state, seconds, rng = Math.random) {
+    const out = { materials: {}, insight: 0, bosses: [], pets: [], drops: [] };
     const p = Economy.power(state);
     if (!(p > 0) || !(seconds > 0)) return out;
 
@@ -413,6 +459,12 @@ const State = (() => {
           (state.materials[layer.mobDrop.material] || 0) + qty;
         out.materials[layer.mobDrop.material] =
           (out.materials[layer.mobDrop.material] || 0) + qty;
+
+        // 小怪有機率掉裝備
+        if (rng() < EQUIP_DROP_CHANCE) {
+          const got = rollEquipDrop(state, state.layer, rng);
+          if (got) out.drops.push(got);
+        }
         continue;
       }
 
@@ -435,6 +487,10 @@ const State = (() => {
         state.insight += layer.insight;
         out.insight += layer.insight;
         out.bosses.push(layer);
+
+        // 魔王必掉一件裝備
+        const bossDrop = rollEquipDrop(state, state.layer, rng);
+        if (bossDrop) out.drops.push(bossDrop);
 
         // 收服靈寵：打贏的魔王從此跟著你
         if (layer.petId && Economy.petLevel(state, layer.petId) < 1) {
@@ -461,6 +517,111 @@ const State = (() => {
       }
     }
     return out;
+  }
+
+  // --- 裝備 ------------------------------------------------
+
+  const BAG_MAX = 60;
+  const EQUIP_DROP_CHANCE = 0.12; // 小怪掉裝備的機率（魔王必掉）
+
+  // 打怪掉裝備。回傳掉到的那件（沒掉就 null）。
+  function rollEquipDrop(state, layerIdx, rng = Math.random) {
+    const pool = Economy.dropsOfLayer(layerIdx);
+    if (!pool.length) return null;
+    const base = pool[Math.floor(rng() * pool.length) % pool.length];
+    const item = { id: base.id, rarity: Economy.pickRarity(rng).id, level: 0 };
+
+    // 空手時自動穿上，省得玩家還要手動裝備第一件
+    if (!state.equipment[base.slot]) {
+      state.equipment[base.slot] = item;
+      return item;
+    }
+    // 背包滿了就丟掉最差的那件，不要讓它無限長
+    if (state.bag.length >= BAG_MAX) {
+      const score = (x) => Economy.equipBonus(x, "power") + Economy.equipBonus(x, "rate") * 2;
+      let worstAt = 0;
+      for (let i = 1; i < state.bag.length; i++) {
+        if (score(state.bag[i]) < score(state.bag[worstAt])) worstAt = i;
+      }
+      if (score(item) <= score(state.bag[worstAt])) return item; // 新的更差，直接不收
+      state.bag.splice(worstAt, 1);
+    }
+    state.bag.push(item);
+    return item;
+  }
+
+  // 從背包穿上。身上原本那件會回到背包，不會消失。
+  function equipItem(state, bagIndex) {
+    const it = state.bag[bagIndex];
+    if (!it) return false;
+    const base = Economy.equipById(it.id);
+    if (!base) return false;
+    state.bag.splice(bagIndex, 1);
+    const old = state.equipment[base.slot];
+    state.equipment[base.slot] = it;
+    if (old) state.bag.push(old);
+    return true;
+  }
+
+  function unequipItem(state, slotId) {
+    const it = state.equipment[slotId];
+    if (!it) return false;
+    if (state.bag.length >= BAG_MAX) return false; // 背包滿了就先別脫，免得東西憑空消失
+    delete state.equipment[slotId];
+    state.bag.push(it);
+    return true;
+  }
+
+  // 強化身上那件。吃該裝備所屬層數的天才地寶。
+  function refineItem(state, slotId) {
+    const it = state.equipment[slotId];
+    if (!it) return false;
+    const base = Economy.equipById(it.id);
+    if (!base || it.level >= CONTENT.refine.maxLevel) return false;
+
+    const layer = CONTENT.layers[base.tier];
+    if (!layer) return false;
+    const mat = layer.mobDrop.material;
+    const cost = Economy.refineCost(it.level);
+    if ((state.materials[mat] || 0) < cost) return false;
+
+    state.materials[mat] -= cost;
+    it.level += 1;
+    return true;
+  }
+
+  function sellJunk(state) {
+    // 把背包裡「比身上那件差」的全部丟掉，換一點悟性
+    let n = 0;
+    state.bag = state.bag.filter((it) => {
+      if (Economy.isUpgrade(state, it)) return true;
+      n++;
+      return false;
+    });
+    if (n > 0) state.insight += Math.max(1, Math.floor(n / 3));
+    return n;
+  }
+
+  // --- 道侶 ------------------------------------------------
+
+  function recruitCompanion(state, id) {
+    const c = Economy.companionById(id);
+    if (!c || state.companions[id]) return false;
+    if (state.insight < c.cost) return false;
+    state.insight -= c.cost;
+    state.companions[id] = true;
+    if (state.team.length < CONTENT.companionSlots) state.team.push(id); // 有空位就直接上場
+    return true;
+  }
+
+  // 出戰／收回。回傳是否有變化。
+  function toggleTeam(state, id) {
+    if (!state.companions[id]) return false;
+    const at = state.team.indexOf(id);
+    if (at >= 0) { state.team.splice(at, 1); return true; }
+    if (state.team.length >= CONTENT.companionSlots) return false;
+    state.team.push(id);
+    return true;
   }
 
   // --- 靈寵 ------------------------------------------------
@@ -542,6 +703,8 @@ const State = (() => {
     advance, advanceCombat, breakthrough,
     buyTechnique, buyTreasure, buyConsumable,
     buyPet, feedPet, equipPet,
+    rollEquipDrop, equipItem, unequipItem, refineItem, sellJunk,
+    recruitCompanion, toggleTeam,
     tickFortune, claimFortune, scheduleFortune, expireBuffs,
     elapsedSinceSave, clampElapsed,
   };

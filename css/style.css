@@ -129,6 +129,51 @@ body {
 }
 #realm-mult:empty { display: none; }
 
+/* --- 人物立繪 --------------------------------------------- */
+
+#hero {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 6px 20px 0;
+}
+
+#portrait {
+  flex: 0 0 auto;
+  width: 76px;
+  height: 88px;
+}
+#portrait svg { width: 100%; height: 100%; display: block; }
+
+#hero-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+#hero-power {
+  font-size: 13px;
+  font-weight: 700;
+  color: #f87171;
+  font-variant-numeric: tabular-nums;
+}
+
+#hero-team { display: flex; gap: 5px; }
+
+.team-chip {
+  width: 27px;
+  height: 27px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--panel);
+  font-size: 15px;
+  line-height: 25px;
+  text-align: center;
+}
+.team-chip.empty { color: var(--line); font-size: 13px; }
+
 /* --- 數字 ------------------------------------------------- */
 
 #counter {
@@ -462,19 +507,23 @@ body {
 
 /* --- 商店分頁 --------------------------------------------- */
 
+/* 七個分頁塞不進 375px，改成可以橫向捲動 */
 #shop-tabs {
   display: flex;
-  gap: 4px;
-  padding: 8px 12px 0;
+  gap: 2px;
+  padding: 8px 10px 0;
   flex: 0 0 auto;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
 }
+#shop-tabs::-webkit-scrollbar { display: none; }
 
 /* 五個分頁要塞進 375px，字距得收緊 */
 .tab {
   position: relative;
-  flex: 1;
-  min-width: 0;
-  padding: 8px 2px;
+  flex: 0 0 auto;
+  padding: 8px 9px;
   border: none;
   border-bottom: 2px solid transparent;
   background: none;
@@ -880,6 +929,164 @@ body {
   font-weight: 700;
   color: var(--jade);
   font-variant-numeric: tabular-nums;
+}
+
+/* --- 裝備 ------------------------------------------------- */
+
+.slot-row {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--panel);
+}
+.slot-row.empty { opacity: 0.4; }
+
+.slot-icon { font-size: 22px; width: 28px; text-align: center; flex: 0 0 auto; }
+.slot-main { flex: 1; min-width: 0; }
+
+.slot-line1 { display: flex; align-items: baseline; gap: 6px; }
+.slot-name { font-size: 14px; font-weight: 700; }
+.slot-lv {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--gold);
+  font-variant-numeric: tabular-nums;
+}
+.slot-stat { font-size: 11px; color: var(--text-dim); margin-top: 1px; }
+
+.slot-refine {
+  flex: 0 0 auto;
+  min-width: 78px;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: none;
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.slot-refine.can { border-color: var(--gold-dark); color: var(--gold); }
+.slot-refine.can:active { transform: scale(0.96); }
+
+#bag-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 6px;
+}
+
+#bag-count { color: var(--jade); font-weight: 700; }
+
+#sell-junk {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: none;
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: 11px;
+  padding: 4px 9px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+#bag { display: flex; flex-direction: column; gap: 6px; }
+
+.bag-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  padding: 8px 11px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  color: var(--text);
+  font-family: inherit;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+/* 比身上那件好 → 亮起來，不用自己比數字 */
+.bag-item.better {
+  border-color: var(--jade);
+  background: rgba(94, 234, 212, 0.06);
+}
+.bag-item:active { transform: scale(0.99); }
+
+.bag-icon { font-size: 20px; flex: 0 0 auto; }
+.bag-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.bag-name { font-size: 13px; font-weight: 700; }
+.bag-stat { font-size: 10px; color: var(--text-dim); }
+
+.bag-act {
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-dim);
+  padding: 3px 9px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.bag-item.better .bag-act { color: var(--jade); border-color: var(--jade); }
+
+/* --- 道侶 ------------------------------------------------- */
+
+.comp-row {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 11px 13px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  opacity: 0.5;
+}
+.comp-row.owned { opacity: 1; }
+.comp-row.active {
+  border-color: var(--violet);
+  background: rgba(167, 139, 250, 0.06);
+}
+
+.comp-icon { font-size: 28px; width: 36px; text-align: center; flex: 0 0 auto; }
+.comp-main { flex: 1; min-width: 0; }
+.comp-name { font-size: 14px; font-weight: 700; }
+.comp-quote {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-style: italic;
+  margin: 2px 0 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.comp-effect { font-size: 11px; font-weight: 600; color: var(--violet); }
+
+.comp-act {
+  flex: 0 0 auto;
+  min-width: 78px;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: none;
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.comp-act.can { border-color: var(--gold-dark); color: var(--gold); }
+.comp-act.on {
+  border-color: var(--violet);
+  background: rgba(167, 139, 250, 0.14);
+  color: var(--violet);
 }
 
 /* --- 靈寵 ------------------------------------------------- */

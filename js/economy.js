@@ -127,9 +127,10 @@ const Economy = (() => {
   function insightGain(state) {
     const next = nextRealm(state);
     if (!next || !(next.insight > 0)) return 0;
-    if (!(next.requirement > 0)) return next.insight;
+    const bonus = companionMult(state, "insightGain");
+    if (!(next.requirement > 0)) return Math.floor(next.insight * bonus);
     const ratio = Math.max(state.money / next.requirement, 1);
-    return Math.max(1, Math.floor(next.insight * Math.sqrt(ratio)));
+    return Math.max(1, Math.floor(next.insight * Math.sqrt(ratio) * bonus));
   }
 
   // --- 功法與法寶的加成 --------------------------------------
@@ -236,7 +237,9 @@ const Economy = (() => {
     return petLevel(state, pet.id) >= pet.maxLevel;
   }
 
-  // 只有「帶在身上」的那一隻才有效果，所以這裡不用把全部加總
+  // 只有「帶在身上」的那一隻才有效果，所以這裡不用把全部加總。
+  // 御獸師（petBoost）會再放大靈寵的加成 —— 但只放大「超出 1 的那部分」，
+  // 否則沒帶靈寵時也會憑空得到加成。
   function petBonus(state, effect) {
     const id = state.equipped;
     if (!id) return 1;
@@ -244,7 +247,100 @@ const Economy = (() => {
     if (!pet || pet.effect !== effect) return 1;
     const lv = petLevel(state, id);
     if (lv < 1) return 1;
-    return petValue(pet, lv);
+    const raw = petValue(pet, lv);
+    return 1 + (raw - 1) * companionMult(state, "petBoost");
+  }
+
+  // --- 裝備 ------------------------------------------------
+
+  function equipById(id) {
+    return CONTENT.equipment.find((e) => e.id === id) || null;
+  }
+
+  function rarityById(id) {
+    return CONTENT.rarities.find((r) => r.id === id) || CONTENT.rarities[0];
+  }
+
+  // 掉落時抽稀有度。rng 可注入，否則測不了。
+  function pickRarity(rng = Math.random) {
+    const list = CONTENT.rarities;
+    const total = list.reduce((a, r) => a + r.weight, 0);
+    let x = rng() * total;
+    for (const r of list) {
+      x -= r.weight;
+      if (x < 0) return r;
+    }
+    return list[0];
+  }
+
+  // 強化倍率：每級 +20% 基礎值
+  function refineMult(level) {
+    return 1 + Math.max(0, level) * CONTENT.refine.perLevel;
+  }
+
+  function refineCost(level) {
+    return CONTENT.refine.baseCost * (Math.max(0, level) + 1);
+  }
+
+  // 某件裝備「實際」給多少（比例）。it 是存檔裡的 { id, rarity, level }
+  function equipBonus(it, kind) {
+    const base = equipById(it.id);
+    if (!base) return 0;
+    const v = base[kind] || 0;
+    if (!v) return 0;
+    return v * rarityById(it.rarity).mult * refineMult(it.level || 0);
+  }
+
+  // 全身裝備的加成總和 → 回傳倍率（1 = 沒穿）
+  function equipTotal(state, kind) {
+    const worn = state.equipment || {};
+    let sum = 0;
+    for (const slot of CONTENT.slots) {
+      const it = worn[slot.id];
+      if (it) sum += equipBonus(it, kind);
+    }
+    return 1 + sum;
+  }
+
+  // 這件是不是比身上那件好？（換裝提示用）
+  function isUpgrade(state, it) {
+    const base = equipById(it.id);
+    if (!base) return false;
+    const cur = (state.equipment || {})[base.slot];
+    if (!cur) return true;
+    // 用「戰力 + 產量」的總和當粗略的強弱指標
+    const score = (x) => equipBonus(x, "power") + equipBonus(x, "rate") * 2;
+    return score(it) > score(cur);
+  }
+
+  // 哪些裝備會從這一層掉
+  function dropsOfLayer(layerIdx) {
+    return CONTENT.equipment.filter((e) => e.tier === layerIdx);
+  }
+
+  // --- 道侶 ------------------------------------------------
+
+  function companionById(id) {
+    return CONTENT.companions.find((c) => c.id === id) || null;
+  }
+
+  // 帶在身上的道侶（最多 companionSlots 個）的加成，乘起來
+  function companionMult(state, effect) {
+    const team = state.team || [];
+    let m = 1;
+    for (const id of team) {
+      const c = companionById(id);
+      if (c && c.effect === effect) m *= c.value;
+    }
+    return m;
+  }
+
+  function companionOwned(state, id) {
+    return !!(state.companions || {})[id];
+  }
+
+  function teamFull(state) {
+    return (state.team || []).length >= CONTENT.companionSlots;
   }
 
   // --- 歷練 ------------------------------------------------
@@ -255,17 +351,19 @@ const Economy = (() => {
     return CONTENT.layers[Math.floor(n)];
   }
 
-  // 戰力 = 每秒傷害。境界打底，功法、法寶、靈寵各乘一層。
+  // 戰力 = 每秒傷害。境界打底，功法、法寶、靈寵、裝備、道侶各乘一層。
   function power(state) {
     return currentRealm(state).power
       * techniqueMult(state, "power")
       * treasureMult(state, "power")
-      * petBonus(state, "power");
+      * petBonus(state, "power")
+      * equipTotal(state, "power")
+      * companionMult(state, "power");
   }
 
-  // 天才地寶的掉落倍率（只有 drop 型的靈寵會加）
+  // 天才地寶的掉落倍率（靈寵 + 道侶）
   function dropMultiplier(state) {
-    return petBonus(state, "drop");
+    return petBonus(state, "drop") * companionMult(state, "drop");
   }
 
   // 打得動這一層的魔王嗎？時限本質上就是一道戰力門檻。
@@ -288,7 +386,9 @@ const Economy = (() => {
       * realmMultiplier(state)
       * treasureMult(state, "allRate")
       * petBonus(state, "allRate")
-      * buffMult(state, "allRate");
+      * buffMult(state, "allRate")
+      * equipTotal(state, "rate")
+      * companionMult(state, "allRate");
   }
 
   // 全部加起來每秒產多少
@@ -318,7 +418,8 @@ const Economy = (() => {
     const flat = CONTENT.clickPower
       * costScale(state)
       * techniqueMult(state, "click")
-      * treasureMult(state, "click");
+      * treasureMult(state, "click")
+      * companionMult(state, "click");
     return (flat + totalRate(state) * clickShare(state)) * buffMult(state, "click");
   }
 
@@ -439,6 +540,9 @@ const Economy = (() => {
     petUpgradeCost,
     petMaxed,
     petBonus,
+    equipById, rarityById, pickRarity,
+    refineMult, refineCost, equipBonus, equipTotal, isUpgrade, dropsOfLayer,
+    companionById, companionMult, companionOwned, teamFull,
     layerAt,
     power,
     dropMultiplier,
