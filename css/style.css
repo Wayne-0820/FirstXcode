@@ -1089,6 +1089,186 @@ body {
   color: var(--violet);
 }
 
+/* --- 武學抽卡 --------------------------------------------- */
+
+#stele {
+  padding: 16px 16px 14px;
+  border: 1px solid var(--violet-dk);
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, rgba(109, 63, 196, 0.14), var(--panel));
+  text-align: center;
+}
+
+#stele-name {
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: 3px;
+  color: var(--violet);
+}
+#stele-desc { font-size: 11px; color: var(--text-dim); margin: 4px 0 12px; }
+
+#pity-bar {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--bg);
+  overflow: hidden;
+}
+#pity-fill { height: 100%; background: var(--violet); }
+
+#pity-text { font-size: 11px; color: var(--text-dim); margin: 6px 0 12px; }
+#pity-text.ready { color: var(--violet); font-weight: 700; }
+
+#draw-buttons { display: flex; gap: 8px; }
+
+.draw-btn {
+  flex: 1;
+  padding: 12px 6px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-hi);
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  touch-action: manipulation;
+  font-variant-numeric: tabular-nums;
+}
+.draw-btn.can {
+  border-color: var(--gold-dark);
+  color: var(--gold);
+  background: var(--panel-hi);
+}
+.draw-btn.can:active { transform: scale(0.98); }
+.draw-btn:disabled { opacity: 0.5; }
+
+#odds { font-size: 10px; color: var(--text-dim); margin-top: 10px; letter-spacing: 1px; }
+
+/* --- 兌換碼 ----------------------------------------------- */
+
+#redeem-box { margin-top: 6px; }
+#redeem-row { display: flex; gap: 6px; }
+
+#redeem-input {
+  flex: 1;
+  min-width: 0;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  user-select: text;
+  -webkit-user-select: text;
+}
+#redeem-input::placeholder { color: var(--text-dim); }
+
+#redeem-btn {
+  flex: 0 0 auto;
+  padding: 0 16px;
+  border: 1px solid var(--violet-dk);
+  border-radius: 8px;
+  background: none;
+  color: var(--violet);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+#redeem-btn:active { transform: scale(0.97); }
+
+#redeem-hint { min-height: 15px; margin-top: 6px; font-size: 11px; font-weight: 600; }
+#redeem-hint.ok { color: var(--green); }
+#redeem-hint.bad { color: #f87171; }
+
+/* --- 武學圖鑑 --------------------------------------------- */
+
+#martial-count { color: var(--jade); font-weight: 700; }
+
+.martial-cat {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-dim);
+  letter-spacing: 2px;
+  padding: 8px 2px 2px;
+}
+
+.martial-row {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+}
+.martial-row.owned { background: var(--panel-hi); }
+
+.martial-icon { font-size: 22px; width: 28px; text-align: center; flex: 0 0 auto; }
+.martial-main { flex: 1; min-width: 0; }
+.martial-line1 { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.martial-name { font-size: 14px; font-weight: 700; }
+.martial-effect { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+
+/* 勾玉一排 */
+.martial-beads { display: flex; align-items: center; gap: 3px; flex: 0 0 auto; }
+.bead {
+  width: 9px;
+  height: 9px;
+  border-radius: 50% 50% 50% 0;   /* 勾玉：一角是尖的 */
+  transform: rotate(45deg);
+  background: var(--bg);
+  border: 1px solid var(--line);
+}
+.bead.on { border-color: transparent; }
+.bead-done {
+  width: 6px;
+  height: 6px;
+  border-radius: 50% 50% 50% 0;
+  transform: rotate(45deg);
+  opacity: 0.7;
+}
+.bead-none { font-size: 10px; color: var(--text-dim); }
+
+/* --- 抽卡結果 --------------------------------------------- */
+
+#draw-results {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 46vh;
+  overflow-y: auto;
+  margin: 8px 0 16px;
+}
+
+.dr-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--bg);
+  text-align: left;
+}
+.dr-icon { font-size: 20px; flex: 0 0 auto; }
+.dr-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.dr-name { font-size: 13px; font-weight: 700; }
+.dr-desc { font-size: 10px; color: var(--text-dim); }
+
+.dr-new, .dr-up, .dr-pity {
+  flex: 0 0 auto;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 2px 6px;
+  border-radius: 5px;
+}
+.dr-new { background: var(--jade); color: #08201b; }
+.dr-up { background: var(--bg); border: 1px solid var(--line); }
+.dr-pity { background: var(--violet); color: #1a0f2e; }
+
 /* --- 靈寵 ------------------------------------------------- */
 
 .pet-row {

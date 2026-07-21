@@ -127,7 +127,7 @@ const Economy = (() => {
   function insightGain(state) {
     const next = nextRealm(state);
     if (!next || !(next.insight > 0)) return 0;
-    const bonus = companionMult(state, "insightGain");
+    const bonus = companionMult(state, "insightGain") * martialTotal(state, "insightGain");
     if (!(next.requirement > 0)) return Math.floor(next.insight * bonus);
     const ratio = Math.max(state.money / next.requirement, 1);
     return Math.max(1, Math.floor(next.insight * Math.sqrt(ratio) * bonus));
@@ -318,6 +318,89 @@ const Economy = (() => {
     return CONTENT.equipment.filter((e) => e.tier === layerIdx);
   }
 
+  // --- 武學（抽卡）------------------------------------------
+
+  const MARTIAL_MAX = CONTENT.gacha.beadsPerColor * CONTENT.gacha.beadTiers.length;
+
+  function martialMaxLevel() { return MARTIAL_MAX; }
+
+  function martialById(id) {
+    return CONTENT.martials.find((m) => m.id === id) || null;
+  }
+
+  function martialCategory(id) {
+    return CONTENT.martialCategories.find((c) => c.id === id) || CONTENT.martialCategories[0];
+  }
+
+  function martialLevel(state, id) {
+    return (state.martials || {})[id] || 0;
+  }
+
+  // 勾玉的顏色與數量。level 1 = 1 顆藍；集滿 5 顆換下一色。
+  //   回傳 { tierIdx, name, color, count, full }
+  function beadInfo(level) {
+    const g = CONTENT.gacha;
+    if (level < 1) return { tierIdx: -1, name: "", color: "#3a3f4c", count: 0, full: false };
+    const capped = Math.min(level, MARTIAL_MAX);
+    const tierIdx = Math.floor((capped - 1) / g.beadsPerColor);
+    const count = capped - tierIdx * g.beadsPerColor; // 1..beadsPerColor
+    const t = g.beadTiers[tierIdx];
+    return { tierIdx, name: t.name, color: t.color, count, full: capped >= MARTIAL_MAX };
+  }
+
+  // 等級加成：Lv1 是基礎值，之後每顆勾玉 +perLevel 的基礎值
+  function martialValue(m, level) {
+    if (level < 1) return 0;
+    return m.value * (1 + (level - 1) * CONTENT.gacha.perLevel);
+  }
+
+  // 所有已學武學的加成總和 → 回傳倍率（1 = 什麼都沒學）
+  function martialTotal(state, effect) {
+    const owned = state.martials || {};
+    let sum = 0;
+    for (const m of CONTENT.martials) {
+      if (m.effect !== effect) continue;
+      const lv = owned[m.id] || 0;
+      if (lv > 0) sum += martialValue(m, lv);
+    }
+    return 1 + sum;
+  }
+
+  // 抽一次要多少靈氣。乘境界物價，所以在每個境界都是有意義的消耗。
+  function drawCost(state, times) {
+    const g = CONTENT.gacha;
+    const base = times >= 10 ? g.tenCost : g.singleCost * times;
+    return base * costScale(state);
+  }
+
+  // 有沒有還沒學過的武學（保底要用）
+  function hasUnlearned(state) {
+    const owned = state.martials || {};
+    return CONTENT.martials.some((m) => !(owned[m.id] > 0));
+  }
+
+  // 依 weight 抽一門武學。onlyNew = 只從「還沒學過的」裡面抽（保底用）。
+  function pickMartial(state, rng = Math.random, onlyNew = false) {
+    const owned = state.martials || {};
+    let pool = CONTENT.martials;
+    if (onlyNew) {
+      const fresh = pool.filter((m) => !(owned[m.id] > 0));
+      if (fresh.length) pool = fresh; // 全學完了就退回一般池
+    }
+    const total = pool.reduce((a, m) => a + m.weight, 0);
+    let x = rng() * total;
+    for (const m of pool) {
+      x -= m.weight;
+      if (x < 0) return m;
+    }
+    return pool[pool.length - 1];
+  }
+
+  // 距離保底還差幾抽
+  function pityLeft(state) {
+    return Math.max(0, CONTENT.gacha.pityCount - (state.pity || 0));
+  }
+
   // --- 道侶 ------------------------------------------------
 
   function companionById(id) {
@@ -358,12 +441,15 @@ const Economy = (() => {
       * treasureMult(state, "power")
       * petBonus(state, "power")
       * equipTotal(state, "power")
-      * companionMult(state, "power");
+      * companionMult(state, "power")
+      * martialTotal(state, "power");
   }
 
-  // 天才地寶的掉落倍率（靈寵 + 道侶）
+  // 天才地寶的掉落倍率（靈寵 + 道侶 + 武學）
   function dropMultiplier(state) {
-    return petBonus(state, "drop") * companionMult(state, "drop");
+    return petBonus(state, "drop")
+      * companionMult(state, "drop")
+      * martialTotal(state, "drop");
   }
 
   // 打得動這一層的魔王嗎？時限本質上就是一道戰力門檻。
@@ -388,7 +474,8 @@ const Economy = (() => {
       * petBonus(state, "allRate")
       * buffMult(state, "allRate")
       * equipTotal(state, "rate")
-      * companionMult(state, "allRate");
+      * companionMult(state, "allRate")
+      * martialTotal(state, "allRate");
   }
 
   // 全部加起來每秒產多少
@@ -419,7 +506,8 @@ const Economy = (() => {
       * costScale(state)
       * techniqueMult(state, "click")
       * treasureMult(state, "click")
-      * companionMult(state, "click");
+      * companionMult(state, "click")
+      * martialTotal(state, "click");
     return (flat + totalRate(state) * clickShare(state)) * buffMult(state, "click");
   }
 
@@ -543,6 +631,8 @@ const Economy = (() => {
     equipById, rarityById, pickRarity,
     refineMult, refineCost, equipBonus, equipTotal, isUpgrade, dropsOfLayer,
     companionById, companionMult, companionOwned, teamFull,
+    martialById, martialCategory, martialLevel, martialValue, martialTotal,
+    martialMaxLevel, beadInfo, drawCost, hasUnlearned, pickMartial, pityLeft,
     layerAt,
     power,
     dropMultiplier,

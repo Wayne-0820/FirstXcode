@@ -14,7 +14,7 @@ const CONTENT = {
   // 存在的理由很實際 —— 手機（尤其是從主畫面啟動的）有可能拿到舊的快取版本，
   // 而你我都沒辦法從畫面上分辨「這是舊版」還是「新功能還沒觸發」。
   // 有這行就一眼分得出來。改東西時順手把它加一。
-  version: "v7 · 機緣",
+  version: "v8 · 武學抽卡",
 
   // 兩種貨幣：
   //   靈氣 —— 修煉賺來的，買修煉設施和功法。突破時歸零。
@@ -382,6 +382,75 @@ const CONTENT = {
       effect: "allRate", value: 4, desc: "靈氣產量 ×4。",
       quote: "「我什麼都不求，所以什麼都有。」" },
   ],
+
+  // ----------------------------------------------------------
+  //  武學：在「問道石碑」用靈氣抽卡。
+  //
+  //  ★ 兩個設計缺一不可，否則抽卡只剩挫折：
+  //    · 保底：連續 pityCount 抽沒抽到「還沒學過」的武學，下一抽必定是新的
+  //    · 重複轉化：抽到已學過的，就鑲一顆勾玉升級，永遠不會白抽
+  //
+  //  勾玉（卡片等級）：從沒有勾玉開始，每學一次同樣的武學 +1 顆。
+  //    藍勾玉 1~5 → 集滿 5 顆變黃勾玉 → 集滿變紅勾玉。
+  //    最高 = 每色 5 顆 × 三色 = 15 級。每顆勾玉 +perLevel 的基礎加成。
+  //
+  //  三大類：招式（戰力）、輕功（天才地寶）、內功（靈氣／打坐／悟性）。
+  //
+  //  抽卡花靈氣（會乘境界物價），所以在每個境界都是有意義的消耗。
+  //  weight 是抽到的相對權重，越低越稀有；不用加起來等於 100。
+  // ----------------------------------------------------------
+  gacha: {
+    name: "問道石碑",
+    desc: "以靈氣叩問，石碑顯化前人所悟。",
+    singleCost: 400,   // × 境界物價
+    tenCost: 3600,     // 十連打九折
+    pityCount: 20,     // 20 抽保底：必得一門還沒學過的武學
+    beadsPerColor: 5,  // 每種顏色的勾玉幾顆
+    perLevel: 0.20,    // 每顆勾玉 +20% 基礎加成
+    // 勾玉顏色：藍 → 黃 → 紅
+    beadTiers: [
+      { name: "藍", color: "#4aa3ff" },
+      { name: "黃", color: "#f5c451" },
+      { name: "紅", color: "#f0506e" },
+    ],
+  },
+
+  // cat  : 分類（martialCategories 的 id）
+  // effect: 加成種類，跟法寶/道侶共用（power / allRate / click / drop / insightGain）
+  // value : 基礎加成比例，0.15 = +15%（會隨勾玉成長，同種效果全部相加）
+  martialCategories: [
+    { id: "move",     name: "招式", icon: "🗡" },
+    { id: "agility",  name: "輕功", icon: "👣" },
+    { id: "internal", name: "內功", icon: "☯️" },
+  ],
+
+  martials: [
+    // 招式：戰力
+    { id: "w_luohan",  cat: "move", name: "羅漢拳",   icon: "👊", effect: "power", value: 0.15, weight: 100, desc: "戰力" },
+    { id: "w_fuhu",    cat: "move", name: "伏虎拳",   icon: "🐯", effect: "power", value: 0.30, weight: 55,  desc: "戰力" },
+    { id: "w_taizu",   cat: "move", name: "太祖長拳", icon: "🥊", effect: "power", value: 0.55, weight: 28,  desc: "戰力" },
+    { id: "w_wanjian", cat: "move", name: "萬劍訣",   icon: "🗡", effect: "power", value: 1.20, weight: 9,   desc: "戰力" },
+    { id: "w_zhuxian", cat: "move", name: "誅仙劍訣", icon: "⚔️", effect: "power", value: 3.00, weight: 3,   desc: "戰力" },
+
+    // 輕功：天才地寶掉落
+    { id: "w_tagang",  cat: "agility", name: "踏罡步",   icon: "👣", effect: "drop", value: 0.15, weight: 100, desc: "天才地寶" },
+    { id: "w_lingbo",  cat: "agility", name: "凌波微步", icon: "💧", effect: "drop", value: 0.35, weight: 55,  desc: "天才地寶" },
+    { id: "w_wangqi",  cat: "agility", name: "望氣尋寶", icon: "👁", effect: "drop", value: 0.60, weight: 28,  desc: "天才地寶" },
+    { id: "w_shenxing",cat: "agility", name: "神行百變", icon: "✨", effect: "drop", value: 1.00, weight: 9,   desc: "天才地寶" },
+    { id: "w_zongdi",  cat: "agility", name: "縱地金光", icon: "🌠", effect: "drop", value: 1.80, weight: 3,   desc: "天才地寶" },
+
+    // 內功：靈氣 / 打坐 / 悟性
+    { id: "w_tuna",    cat: "internal", name: "吐納訣",     icon: "🌬", effect: "allRate", value: 0.15, weight: 100, desc: "靈氣產量" },
+    { id: "w_zhoutian",cat: "internal", name: "小周天",     icon: "📗", effect: "click",   value: 0.40, weight: 55,  desc: "打坐所得" },
+    { id: "w_liangyi", cat: "internal", name: "兩儀功",     icon: "☯️", effect: "allRate", value: 0.50, weight: 28,  desc: "靈氣產量" },
+    { id: "w_wuxing",  cat: "internal", name: "五行大法",   icon: "🌀", effect: "allRate", value: 1.10, weight: 9,   desc: "靈氣產量" },
+    { id: "w_taiji",   cat: "internal", name: "太極玄清道", icon: "🌌", effect: "allRate", value: 2.80, weight: 3,   desc: "靈氣產量" },
+    { id: "w_dao",     cat: "internal", name: "問道歌",     icon: "📜", effect: "insightGain", value: 1.00, weight: 3, desc: "突破悟性" },
+  ],
+
+  // 兌換碼：私人用。原始碼裡不放明碼，只放雜湊值 —— 見 state.js 的 redeem()。
+  // 兌換後會免費叩問石碑 1000 次（等於把武學一次養滿），是給自己用的作弊碼。
+  redeemDraws: 1000,
 
   // ----------------------------------------------------------
   //  符籙：消耗品，可以囤，用一張少一張。

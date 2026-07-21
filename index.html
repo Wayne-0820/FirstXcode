@@ -86,6 +86,7 @@
       <button class="tab" data-tab="gear">裝備<span class="tab-badge" id="badge-gear"></span></button>
       <button class="tab" data-tab="pet">靈寵<span class="tab-badge" id="badge-pet"></span></button>
       <button class="tab" data-tab="team">道侶<span class="tab-badge" id="badge-team"></span></button>
+      <button class="tab" data-tab="martial">武學<span class="tab-badge" id="badge-martial"></span></button>
     </div>
     <div id="shop-bar">
       <span id="shop-hint"></span>
@@ -131,6 +132,34 @@
 
     <!-- 道侶：最多帶三個 -->
     <div id="panel-team" class="panel hidden"></div>
+
+    <!-- 武學：抽卡 -->
+    <div id="panel-martial" class="panel hidden">
+      <div id="stele">
+        <div id="stele-name"></div>
+        <div id="stele-desc"></div>
+        <div id="pity-bar"><div id="pity-fill"></div></div>
+        <div id="pity-text"></div>
+        <div id="draw-buttons">
+          <button id="draw-1" class="draw-btn"></button>
+          <button id="draw-10" class="draw-btn"></button>
+        </div>
+        <div id="odds"></div>
+      </div>
+
+      <div id="redeem-box">
+        <span class="section-head">兌換碼</span>
+        <div id="redeem-row">
+          <input id="redeem-input" type="text" inputmode="numeric" autocomplete="off"
+                 spellcheck="false" placeholder="輸入兌換碼">
+          <button id="redeem-btn">兌換</button>
+        </div>
+        <div id="redeem-hint"></div>
+      </div>
+
+      <div class="section-head">武學圖鑑 <span id="martial-count"></span></div>
+      <div id="martial-list"></div>
+    </div>
   </section>
 
   <footer id="footer">
@@ -205,6 +234,15 @@
     <div id="realmup-mult" class="modal-figure"></div>
     <div id="realmup-insight"></div>
     <button id="realmup-ok" class="btn-primary">繼續修行</button>
+  </div>
+</div>
+
+<!-- 抽卡結果 -->
+<div id="draw-modal" class="modal">
+  <div class="modal-card">
+    <div class="modal-title">石碑顯化</div>
+    <div id="draw-results"></div>
+    <button id="draw-ok" class="btn-primary">收下</button>
   </div>
 </div>
 

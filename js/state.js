@@ -55,6 +55,11 @@ const State = (() => {
       bag: [],         // backpack：打到但還沒穿的
       companions: {},  // { companionId: true } 已招募
       team: [],        // 出戰的道侶（最多 companionSlots 個）
+      // 武學抽卡
+      martials: {},    // { martialId: 等級（勾玉數） }
+      pity: 0,         // 連續幾抽沒抽到新武學（保底計數）
+      draws: 0,        // 總共抽過幾次
+      redeemed: {},    // 用過的兌換碼雜湊，避免重複兌換
       lastSave: Date.now(),
     };
   }
@@ -209,6 +214,26 @@ const State = (() => {
         if (state.companions[id] && !seen.has(id)) { seen.add(id); state.team.push(id); }
       }
       state.team = state.team.slice(0, CONTENT.companionSlots);
+    }
+
+    // --- 武學 ---
+    const martialMax = Economy.martialMaxLevel();
+    if (data.martials && typeof data.martials === "object") {
+      for (const m of CONTENT.martials) {
+        const lv = Math.floor(num(data.martials[m.id], 0));
+        if (lv >= 1) state.martials[m.id] = Math.min(lv, martialMax);
+      }
+    }
+    // 保底計數要夾住：改壞了會讓玩家每抽必新
+    state.pity = Math.min(
+      Math.max(Math.floor(num(data.pity, 0)), 0),
+      CONTENT.gacha.pityCount
+    );
+    state.draws = Math.max(0, Math.floor(num(data.draws, 0)));
+    if (data.redeemed && typeof data.redeemed === "object") {
+      for (const k of Object.keys(data.redeemed)) {
+        if (data.redeemed[k]) state.redeemed[k] = true;
+      }
     }
 
     // --- 機緣 ---
@@ -602,6 +627,82 @@ const State = (() => {
     return n;
   }
 
+  // --- 武學抽卡 --------------------------------------------
+
+  const MARTIAL_MAX = Economy.martialMaxLevel();
+
+  // 抽一次的內部實作。回傳 { martial, level, isNew, byPity }。
+  function drawOnce(state, rng) {
+    const g = CONTENT.gacha;
+
+    // 保底：連續 pityCount 抽沒抽到新的，這一抽強制從「還沒學過的」裡抽。
+    // 全學完了 hasUnlearned 為 false，保底自然失效（也沒有意義）。
+    const byPity = state.pity >= g.pityCount && Economy.hasUnlearned(state);
+    const m = Economy.pickMartial(state, rng, byPity);
+    if (!m) return null;
+
+    const cur = state.martials[m.id] || 0;
+    const isNew = cur < 1;
+    // 重複就鑲一顆勾玉升級 —— 永遠不會白抽。滿級了就到頂不再加。
+    state.martials[m.id] = Math.min(cur + 1, MARTIAL_MAX);
+    state.draws += 1;
+
+    // 抽到新的就把保底計數歸零，否則 +1（夾在上限，免得存檔壞掉時爆表）
+    state.pity = isNew ? 0 : Math.min(state.pity + 1, g.pityCount);
+
+    return { martial: m, level: state.martials[m.id], isNew, byPity };
+  }
+
+  // 抽卡。times 是 1 或 10。靈氣不夠回傳 null；否則回傳結果陣列。
+  function draw(state, times, rng = Math.random) {
+    const n = times >= 10 ? 10 : 1;
+    const cost = Economy.drawCost(state, n);
+    if (state.money < cost) return null;
+    state.money -= cost;
+
+    const results = [];
+    for (let i = 0; i < n; i++) {
+      const r = drawOnce(state, rng);
+      if (r) results.push(r);
+    }
+    return results;
+  }
+
+  // --- 兌換碼 ----------------------------------------------
+  //
+  // 私人用。原始碼裡不放明碼 —— 只放雜湊值，玩家看原始碼不會直接看到 "5580"。
+  // （提醒：這是單機網頁，決心破解的人仍能反推；這只是不讓它明晃晃地躺著。）
+
+  // djb2 字串雜湊，回正整數
+  function hashCode(str) {
+    let h = 5381;
+    const s = String(str).trim();
+    for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) >>> 0;
+    return h;
+  }
+
+  // "5580" 的雜湊。test.html 會驗證這個常數對不對，錯了它會紅字。
+  const REDEEM_CODES = {
+    2088437879: "draws1000", // → 免費叩問 1000 次
+  };
+
+  // 回傳 { ok, reason, gained }
+  function redeem(state, code) {
+    const h = hashCode(code);
+    const action = REDEEM_CODES[h];
+    if (!action) return { ok: false, reason: "無效的兌換碼" };
+    if (!state.redeemed) state.redeemed = {};
+    if (state.redeemed[h]) return { ok: false, reason: "這組兌換碼已經用過了" };
+
+    let gained = 0;
+    if (action === "draws1000") {
+      for (let i = 0; i < CONTENT.redeemDraws; i++) drawOnce(state, Math.random);
+      gained = CONTENT.redeemDraws;
+    }
+    state.redeemed[h] = true;
+    return { ok: true, gained };
+  }
+
   // --- 道侶 ------------------------------------------------
 
   function recruitCompanion(state, id) {
@@ -705,6 +806,7 @@ const State = (() => {
     buyPet, feedPet, equipPet,
     rollEquipDrop, equipItem, unequipItem, refineItem, sellJunk,
     recruitCompanion, toggleTeam,
+    draw, redeem,
     tickFortune, claimFortune, scheduleFortune, expireBuffs,
     elapsedSinceSave, clampElapsed,
   };

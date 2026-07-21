@@ -48,6 +48,8 @@ const Game = (() => {
       onSellJunk,
       onRecruit,
       onToggleTeam,
+      onDraw,
+      onRedeem,
       onBuyAmountChange,
       onBreakthroughRequest,
       onBreakthroughConfirm,
@@ -207,6 +209,25 @@ const Game = (() => {
   }
   function onRecruit(id) { State.recruitCompanion(state, id); }
   function onToggleTeam(id) { State.toggleTeam(state, id); }
+
+  function onDraw(times) {
+    const results = State.draw(state, times);
+    if (!results) return; // 靈氣不夠，畫面上按鈕本來就是暗的
+    State.save(state);
+    lastAutosave = Date.now();
+    UI.showDrawResults(results);
+  }
+
+  function onRedeem(code) {
+    const r = State.redeem(state, code);
+    if (r.ok) {
+      State.save(state);
+      lastAutosave = Date.now();
+      UI.showRedeemHint(`兌換成功：叩問石碑 ${r.gained} 次`, true);
+    } else {
+      UI.showRedeemHint(r.reason, false);
+    }
+  }
 
   function onTransferOpen() {
     State.save(state); // 先存一次，匯出的才是當下最新的進度

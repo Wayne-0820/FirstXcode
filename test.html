@@ -764,6 +764,131 @@ is("nextRealm：最高境界沒有下一關 = null",
   log(ok, "content.js：道侶設定合法（effect 認得、加成不會變弱）", note);
 })();
 
+// --- 武學抽卡 ------------------------------------------------
+(() => {
+  const m = CONTENT.martials[0];
+  eq("martialValue：Lv0 = 0", Economy.martialValue(m, 0), 0);
+  eq("martialValue：Lv1 = 基礎", Economy.martialValue(m, 1), m.value);
+  eq("martialValue：Lv3 = 基礎 ×(1+2×perLevel)",
+     Economy.martialValue(m, 3), m.value * (1 + 2 * CONTENT.gacha.perLevel));
+
+  const s = blankState(0);
+  eq("martialTotal：沒學 = 1", Economy.martialTotal(s, m.effect), 1);
+  s.martials[m.id] = 1;
+  eq("martialTotal：學一門 = 1 + 加成", Economy.martialTotal(s, m.effect), 1 + m.value);
+  eq("power：招式有乘進戰力（若第一門是 power）",
+     Economy.power(s), m.effect === "power"
+       ? CONTENT.realms[0].power * (1 + m.value) : CONTENT.realms[0].power);
+})();
+
+// 勾玉：藍1-5 → 黃6-10 → 紅11-15
+(() => {
+  const per = CONTENT.gacha.beadsPerColor;
+  const b1 = Economy.beadInfo(1);
+  is("beadInfo：Lv1 是第一色第 1 顆", `${b1.tierIdx}/${b1.count}`, "0/1");
+  const bFull = Economy.beadInfo(per);
+  is("beadInfo：集滿第一色", `${bFull.tierIdx}/${bFull.count}`, `0/${per}`);
+  const bNext = Economy.beadInfo(per + 1);
+  is("beadInfo：滿了換第二色", `${bNext.tierIdx}/${bNext.count}`, "1/1");
+  const max = Economy.martialMaxLevel();
+  is("martialMaxLevel = 每色顆數 × 顏色數", max, per * CONTENT.gacha.beadTiers.length);
+  is("beadInfo：最高級是最後一色最後一顆",
+     `${Economy.beadInfo(max).tierIdx}/${Economy.beadInfo(max).count}`,
+     `${CONTENT.gacha.beadTiers.length - 1}/${per}`);
+  is("beadInfo：Lv0 沒有勾玉", Economy.beadInfo(0).count, 0);
+})();
+
+// 抽卡：新→Lv1，重複→+1，永遠不會白抽
+(() => {
+  const s = blankState(0);
+  const m0 = CONTENT.martials[0].id;
+  // 塞爆靈氣，直接呼叫 draw（rng 固定，一定抽到第一門）
+  s.money = 1e9;
+  const alwaysFirst = () => 0;
+  let r = State.draw(s, 1, alwaysFirst);
+  is("draw：第一次抽到 = 新的", r[0].isNew, true);
+  is("draw：新的是 Lv1", r[0].level, 1);
+  is("draw：學進去了", Economy.martialLevel(s, r[0].martial.id), 1);
+
+  const before = Object.keys(s.martials).length;
+  r = State.draw(s, 1, alwaysFirst);
+  is("draw：再抽同一門 = 重複", r[0].isNew, false);
+  is("draw：重複就升級（Lv2）", r[0].level, 2);
+  is("draw：重複不會多學一門", Object.keys(s.martials).length, before);
+
+  // 靈氣不夠回傳 null，不扣錢
+  s.money = 0;
+  is("draw：靈氣不夠回傳 null", State.draw(s, 1), null);
+})();
+
+// 保底：pityCount 抽沒抽到新的，下一抽必得新武學
+(() => {
+  const s = blankState(0);
+  s.money = 1e15;
+  // 先把 pity 頂到門檻，且故意讓 rng 一直抽第一門（會一直重複）
+  const first = () => 0;
+  State.draw(s, 1, first); // 學會第一門
+  // 手動催 pity
+  s.pity = CONTENT.gacha.pityCount;
+  const learnedBefore = Object.keys(s.martials).length;
+  const r = State.draw(s, 1, first); // rng 想抽第一門，但保底該給新的
+  is("draw：保底這抽是新武學", r[0].isNew, true);
+  is("draw：保底有標記 byPity", r[0].byPity, true);
+  is("draw：保底讓圖鑑多一門", Object.keys(s.martials).length, learnedBefore + 1);
+  is("draw：抽到新的後 pity 歸零", s.pity, 0);
+})();
+
+// pityLeft 與滿級
+(() => {
+  const s = blankState(0);
+  is("pityLeft：一開始 = pityCount", Economy.pityLeft(s), CONTENT.gacha.pityCount);
+  s.pity = CONTENT.gacha.pityCount;
+  is("pityLeft：頂了 = 0", Economy.pityLeft(s), 0);
+
+  // 滿級不會超過上限
+  s.money = 1e15;
+  const id = CONTENT.martials[0].id;
+  s.martials[id] = Economy.martialMaxLevel();
+  const r = State.draw(s, 1, () => 0);
+  log(r[0].level <= Economy.martialMaxLevel(), "draw：滿級後不會超過上限", "得到 " + r[0].level);
+})();
+
+// --- 兌換碼 --------------------------------------------------
+(() => {
+  const s = blankState(0);
+  const r = State.redeem(s, "5580");
+  is("redeem：正確的碼兌換成功", r.ok, true);
+  is("redeem：發了 1000 抽", r.gained, CONTENT.redeemDraws);
+  log(Object.keys(s.martials).length > 0, "redeem：1000 抽真的學到武學",
+      `學到 ${Object.keys(s.martials).length} 門`);
+
+  const again = State.redeem(s, "5580");
+  is("redeem：同一組不能重複兌換", again.ok, false);
+
+  const bad = State.redeem(blankState(0), "0000");
+  is("redeem：錯的碼兌換失敗", bad.ok, false);
+  const empty = State.redeem(blankState(0), "");
+  is("redeem：空字串兌換失敗", empty.ok, false);
+  // 前後空白要容忍（手機貼上常帶空白）
+  is("redeem：容忍前後空白", State.redeem(blankState(0), " 5580 ").ok, true);
+})();
+
+(() => {
+  const CATS = new Set(CONTENT.martialCategories.map((c) => c.id));
+  const EFFECTS = new Set(["click", "power", "allRate", "drop", "insightGain"]);
+  const ids = new Set();
+  let ok = true, note = "";
+  for (const m of CONTENT.martials) {
+    if (ids.has(m.id)) { ok = false; note = `武學 id 重複：${m.id}`; break; }
+    ids.add(m.id);
+    if (!CATS.has(m.cat)) { ok = false; note = `「${m.name}」的 cat「${m.cat}」不存在`; break; }
+    if (!EFFECTS.has(m.effect)) { ok = false; note = `「${m.name}」的 effect「${m.effect}」程式不認得`; break; }
+    if (!(m.value > 0)) { ok = false; note = `「${m.name}」的 value 要大於 0`; break; }
+    if (!(m.weight > 0)) { ok = false; note = `「${m.name}」的 weight 要大於 0`; break; }
+  }
+  log(ok, "content.js：武學設定合法（分類存在、effect 認得、權重合理）", note);
+})();
+
 // --- 搬存檔 --------------------------------------------------
 (() => {
   const KEY = "idle-save-v1";
@@ -987,16 +1112,21 @@ is("nextRealm：最高境界沒有下一關 = null",
   is("canBeatBoss：煉氣剛好打得過", Economy.canBeatBoss(s2, layer), true);
 })();
 
+// 這些測試要驗「傷害/擊殺的精確數字」，所以要擋掉隨機裝備掉落 ——
+// 掉到的兵器會自動穿上、戰力上升，殺怪速度就變了。
+// noDrop 回傳 0.99：大於掉落機率，小怪不會掉裝備。
+const noDrop = () => 0.99;
+
 (() => {
   const layer = CONTENT.layers[0]; // 小怪 20 血
   const s = blankState(1);         // 戰力 5 → 4 秒一隻
-  State.advanceCombat(s, 4);
+  State.advanceCombat(s, 4, noDrop);
   is("advanceCombat：4 秒剛好殺掉一隻小怪", s.kills, 1);
   is("advanceCombat：小怪掉天才地寶", s.materials[layer.mobDrop.material], 1);
   is("advanceCombat：殺完傷害歸零，換下一隻", s.dmg, 0);
 
   // 半隻的進度要留著
-  State.advanceCombat(s, 2);
+  State.advanceCombat(s, 2, noDrop);
   is("advanceCombat：打一半的傷害會累積", s.dmg, 10);
   is("advanceCombat：還沒死就不算擊殺", s.kills, 1);
 })();
@@ -1006,11 +1136,11 @@ is("nextRealm：最高境界沒有下一關 = null",
   const MOBS = CONTENT.combat.mobsPerLayer;
   const s = blankState(1); // 戰力 5
 
-  State.advanceCombat(s, 4 * MOBS); // 清光小怪
+  State.advanceCombat(s, 4 * MOBS, noDrop); // 清光小怪
   is("advanceCombat：清完小怪就換魔王上場", s.kills, MOBS);
   is("advanceCombat：這時還沒過關", s.layer, 0);
 
-  const out = State.advanceCombat(s, 30); // 魔王 150 / 5 = 30 秒
+  const out = State.advanceCombat(s, 30, noDrop); // 魔王 150 / 5 = 30 秒
   is("advanceCombat：擊殺魔王後進入下一層", s.layer, 1);
   is("advanceCombat：進新的一層要重數小怪", s.kills, 0);
   is("advanceCombat：魔王給悟性", s.insight, layer.insight);

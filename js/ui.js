@@ -80,6 +80,7 @@ const UI = (() => {
     buildMaterialRows();
     buildSlots(handlers);
     buildCompanionRows(handlers);
+    buildMartial(handlers);
     $("#sell-junk").addEventListener("click", handlers.onSellJunk);
 
     // 機緣是限時的，用 pointerdown 才不會慢半拍
@@ -161,7 +162,7 @@ const UI = (() => {
     for (const tab of document.querySelectorAll("#shop-tabs .tab")) {
       tab.classList.toggle("active", tab.dataset.tab === name);
     }
-    for (const p of ["gen", "tech", "trea", "battle", "gear", "pet", "team"]) {
+    for (const p of ["gen", "tech", "trea", "battle", "gear", "pet", "team", "martial"]) {
       $("#panel-" + p).classList.toggle("hidden", p !== name);
     }
     // 數量選擇只對修煉設施有意義：其他東西都是一次一個
@@ -173,6 +174,7 @@ const UI = (() => {
       : name === "gear" ? "打怪掉落・魔王必掉"
       : name === "pet" ? "只能帶一隻・餵天才地寶升級"
       : name === "team" ? `最多帶 ${CONTENT.companionSlots} 位・悟性招募`
+      : name === "martial" ? "靈氣叩問・重複可升級"
       : "";
   }
 
@@ -539,6 +541,139 @@ const UI = (() => {
     return actionable;
   }
 
+  // --- 武學抽卡 --------------------------------------------
+
+  const martialRows = new Map();
+
+  // 一排勾玉：填滿的用當前顏色，空的用灰底。level 0 顯示「無勾玉」。
+  function beadsHTML(level) {
+    const b = Economy.beadInfo(level);
+    const per = CONTENT.gacha.beadsPerColor;
+    if (level < 1) return '<span class="bead-none">無勾玉</span>';
+    let s = "";
+    for (let i = 0; i < per; i++) {
+      const on = i < b.count;
+      s += `<span class="bead${on ? " on" : ""}" style="${on ? "background:" + b.color : ""}"></span>`;
+    }
+    // 已經到黃或紅色階，前面幾色算是「集滿過」，用小點標示走了多遠
+    let dots = "";
+    for (let t = 0; t < b.tierIdx; t++) {
+      dots += `<span class="bead-done" style="background:${CONTENT.gacha.beadTiers[t].color}"></span>`;
+    }
+    return dots + s;
+  }
+
+  function buildMartial(handlers) {
+    $("#stele-name").textContent = CONTENT.gacha.name;
+    $("#stele-desc").textContent = CONTENT.gacha.desc;
+    $("#draw-1").addEventListener("click", () => handlers.onDraw(1));
+    $("#draw-10").addEventListener("click", () => handlers.onDraw(10));
+    $("#draw-ok").addEventListener("click", () => hideModal("#draw-modal"));
+
+    $("#redeem-btn").addEventListener("click", () =>
+      handlers.onRedeem($("#redeem-input").value));
+
+    // 勾玉顏色說明，公開透明
+    $("#odds").innerHTML = "勾玉：" + CONTENT.gacha.beadTiers.map((t) =>
+      `<span style="color:${t.color}">${t.name}</span>`).join(" → ")
+      + `　（每色 ${CONTENT.gacha.beadsPerColor} 顆）`;
+
+    const list = $("#martial-list");
+    for (const cat of CONTENT.martialCategories) {
+      const head = document.createElement("div");
+      head.className = "martial-cat";
+      head.textContent = cat.icon + " " + cat.name;
+      list.appendChild(head);
+
+      for (const m of CONTENT.martials.filter((x) => x.cat === cat.id)) {
+        const row = document.createElement("div");
+        row.className = "martial-row";
+        row.innerHTML = `
+          <div class="martial-icon"></div>
+          <div class="martial-main">
+            <div class="martial-line1"><span class="martial-name"></span><span class="martial-beads"></span></div>
+            <div class="martial-effect"></div>
+          </div>`;
+        row.querySelector(".martial-icon").textContent = m.icon;
+        list.appendChild(row);
+        martialRows.set(m.id, {
+          root: row,
+          icon: row.querySelector(".martial-icon"),
+          name: row.querySelector(".martial-name"),
+          beads: row.querySelector(".martial-beads"),
+          effect: row.querySelector(".martial-effect"),
+        });
+      }
+    }
+  }
+
+  function renderMartial(state) {
+    const g = CONTENT.gacha;
+    const c1 = Economy.drawCost(state, 1);
+    const c10 = Economy.drawCost(state, 10);
+    const sym = CONTENT.currency.symbol;
+
+    $("#draw-1").textContent = `叩問一次　${sym}${Economy.formatNumber(c1)}`;
+    $("#draw-1").disabled = state.money < c1;
+    $("#draw-1").classList.toggle("can", state.money >= c1);
+    $("#draw-10").textContent = `叩問十次　${sym}${Economy.formatNumber(c10)}`;
+    $("#draw-10").disabled = state.money < c10;
+    $("#draw-10").classList.toggle("can", state.money >= c10);
+
+    const left = Economy.pityLeft(state);
+    $("#pity-fill").style.width = ((state.pity || 0) / g.pityCount * 100).toFixed(1) + "%";
+    $("#pity-text").textContent = left > 0
+      ? `距保底還有 ${left} 抽（必得新武學）`
+      : "下一抽必得新武學";
+    $("#pity-text").classList.toggle("ready", left === 0);
+
+    let learned = 0;
+    for (const m of CONTENT.martials) {
+      const r = martialRows.get(m.id);
+      const lv = Economy.martialLevel(state, m.id);
+      const owned = lv >= 1;
+      if (owned) learned++;
+
+      r.root.classList.toggle("owned", owned);
+      r.icon.style.opacity = owned ? "1" : "0.3";
+      r.name.textContent = owned ? m.name : "？？？";
+      r.beads.innerHTML = owned ? beadsHTML(lv) : "";
+      r.effect.textContent = owned
+        ? m.desc + " +" + Math.round(Economy.martialValue(m, lv) * 100) + "%"
+        : "尚未習得";
+    }
+    $("#martial-count").textContent = `${learned}/${CONTENT.martials.length}`;
+    return learned;
+  }
+
+  function showRedeemHint(text, ok) {
+    const h = $("#redeem-hint");
+    h.textContent = text;
+    h.className = ok ? "ok" : "bad";
+    if (ok) $("#redeem-input").value = "";
+  }
+
+  function showDrawResults(results) {
+    const wrap = $("#draw-results");
+    wrap.innerHTML = results.map((r) => {
+      const b = Economy.beadInfo(r.level);
+      const color = b.color;
+      const badge = r.isNew ? '<span class="dr-new">新</span>'
+        : `<span class="dr-up" style="color:${color}">${b.name}勾玉 ${b.count}</span>`;
+      const pity = r.byPity ? '<span class="dr-pity">保底</span>' : "";
+      return `
+        <div class="dr-item" style="border-color:${color}55">
+          <span class="dr-icon">${r.martial.icon}</span>
+          <span class="dr-main">
+            <span class="dr-name">${r.martial.name}</span>
+            <span class="dr-desc">${r.martial.desc} +${Math.round(Economy.martialValue(r.martial, r.level) * 100)}%</span>
+          </span>
+          ${pity}${badge}
+        </div>`;
+    }).join("");
+    showModal("#draw-modal");
+  }
+
   // --- 每幀更新 --------------------------------------------
 
   function render(state, buyAmount, handlers) {
@@ -548,6 +683,9 @@ const UI = (() => {
     el.heroPower.textContent = "戰力 " + Economy.formatNumber(Economy.power(state));
     setBadge("#badge-gear", renderSlots(state) + renderBag(state, handlers));
     setBadge("#badge-team", renderCompanions(state));
+    renderMartial(state);
+    // 抽得起就亮一個點 —— 只提示「現在可以抽」，不用數字轟炸
+    setBadge("#badge-martial", state.money >= Economy.drawCost(state, 1) ? 1 : 0, "·");
 
     el.money.textContent = Economy.formatNumber(state.money);
     el.rate.textContent = "每秒 +" + Economy.formatNumber(Economy.totalRate(state));
@@ -640,9 +778,10 @@ const UI = (() => {
     setBadge("#badge-trea", count);
   }
 
-  function setBadge(sel, count) {
+  // label 可以覆蓋顯示的字（例如武學只想顯示一個點，不想用數字轟炸）
+  function setBadge(sel, count, label) {
     const badge = $(sel);
-    badge.textContent = count > 0 ? count : "";
+    badge.textContent = count > 0 ? (label !== undefined ? label : count) : "";
     badge.classList.toggle("hidden", count === 0);
   }
 
@@ -1000,6 +1139,7 @@ const UI = (() => {
   return {
     build, render, setTab,
     showOffline, showBreakthroughConfirm, showRealmUp, showFail,
-    showFortuneResult, showTransfer, transferHint, flashSaved,
+    showFortuneResult, showDrawResults, showRedeemHint,
+    showTransfer, transferHint, flashSaved,
   };
 })();
