@@ -764,6 +764,172 @@ is("nextRealm：最高境界沒有下一關 = null",
   log(ok, "content.js：道侶設定合法（effect 認得、加成不會變弱）", note);
 })();
 
+// --- 宗門弟子 ------------------------------------------------
+(() => {
+  const sect = CONTENT.sect;
+  const d = CONTENT.disciples[0];
+
+  eq("discipleValue：Lv0 = 0", Economy.discipleValue(d, 0), 0);
+  eq("discipleValue：Lv1 = 基礎", Economy.discipleValue(d, 1), d.base);
+  eq("discipleValue：Lv3 = 基礎 ×(1+2×perLevel)",
+     Economy.discipleValue(d, 3), d.base * (1 + 2 * sect.perLevel));
+
+  const s = blankState(0);
+  is("discipleLevel：沒招募 = 0", Economy.discipleLevel(s, d.id), 0);
+  eq("sectTotal：沒弟子 = 1", Economy.sectTotal(s, d.effect), 1);
+
+  s.disciples[d.id] = { cult: 0 };
+  is("discipleLevel：招募後 = Lv1", Economy.discipleLevel(s, d.id), 1);
+  eq("sectTotal：一個弟子 = 1 + 加成", Economy.sectTotal(s, d.effect), 1 + d.base);
+})();
+
+// 道行隨累積時間成長，滿級封頂，cult 不無限膨脹
+(() => {
+  const sect = CONTENT.sect;
+  const per = Economy.sectSecondsPerLevel();
+  const d = CONTENT.disciples[0];
+  const s = blankState(0);
+  s.disciples[d.id] = { cult: 0 };
+
+  State.advanceSect(s, per);
+  is("advanceSect：修煉一級的時間 → Lv2", Economy.discipleLevel(s, d.id), 2);
+  State.advanceSect(s, per * 0.5);
+  is("advanceSect：不足一級不進級", Economy.discipleLevel(s, d.id), 2);
+
+  State.advanceSect(s, per * 1000);
+  is("advanceSect：修煉再久也封在滿級", Economy.discipleLevel(s, d.id), sect.maxLevel);
+  eq("advanceSect：cult 夾在滿級所需秒數（不會無限膨脹）",
+     s.disciples[d.id].cult, Economy.sectMaxCult());
+  eq("sectTotal：滿級加成 = base ×(1+(max-1)×perLevel)",
+     Economy.sectTotal(s, d.effect),
+     1 + d.base * (1 + (sect.maxLevel - 1) * sect.perLevel));
+})();
+
+// advanceSect 不碰沒招募的弟子（不會憑空生出加成）
+(() => {
+  const s = blankState(0);
+  const before = JSON.stringify(s.disciples);
+  State.advanceSect(s, 1e9);
+  is("advanceSect：沒招募任何弟子時什麼都不動", JSON.stringify(s.disciples), before);
+})();
+
+// 招募規則：悟性、不重複、亂 id
+(() => {
+  const s = blankState(0);
+  const first = CONTENT.disciples.find((x) => (x.requireRank || 0) === 0);
+  s.insight = first.cost - 1;
+  is("recruitDisciple：悟性不夠招不到", State.recruitDisciple(s, first.id), false);
+  s.insight = first.cost;
+  is("recruitDisciple：夠悟性就招得到", State.recruitDisciple(s, first.id), true);
+  is("recruitDisciple：有扣悟性", s.insight, 0);
+  is("recruitDisciple：不能重複招募", State.recruitDisciple(s, first.id), false);
+  is("recruitDisciple：亂給 id 不會爆", State.recruitDisciple(s, "沒這個人"), false);
+  is("sectRank：招了一個 = 1", Economy.sectRank(s), 1);
+})();
+
+// 宗門等級門檻：等級不到招不到，收滿前置弟子才解鎖
+(() => {
+  const s = blankState(0);
+  s.insight = 999999;
+  const gated = CONTENT.disciples.find((x) => (x.requireRank || 0) >= 1);
+  if (gated) {
+    is("discipleAvailable：宗門等級不到 → 招不到", State.recruitDisciple(s, gated.id), false);
+    for (const x of CONTENT.disciples) {
+      if ((x.requireRank || 0) < gated.requireRank) State.recruitDisciple(s, x.id);
+    }
+    is("discipleAvailable：湊到宗門等級 → 招得到", State.recruitDisciple(s, gated.id), true);
+  }
+})();
+
+// 宗門加成有真的乘進戰力與靈氣產量
+(() => {
+  const dp = CONTENT.disciples.find((x) => x.effect === "power");
+  if (dp) {
+    const s = blankState(0);
+    s.disciples[dp.id] = { cult: 0 };
+    eq("power：宗門戰力有乘進去",
+       Economy.power(s), CONTENT.realms[0].power * (1 + dp.base));
+  }
+
+  const da = CONTENT.disciples.find((x) => x.effect === "allRate");
+  if (da) {
+    const s = blankState(0);
+    const g = CONTENT.generators[0];
+    s.owned[g.id] = 10;
+    const baseRate = Economy.genRate(s, g);
+    s.disciples[da.id] = { cult: 0 };
+    eq("genRate：宗門靈氣產量有乘進去", Economy.genRate(s, g), baseRate * (1 + da.base));
+  }
+})();
+
+// 突破帶不走宗門 —— 弟子和道行都保留
+(() => {
+  const s = blankState(0);
+  s.insight = 999999;
+  const first = CONTENT.disciples.find((x) => (x.requireRank || 0) === 0);
+  State.recruitDisciple(s, first.id);
+  State.advanceSect(s, Economy.sectSecondsPerLevel() * 3);
+  const lvBefore = Economy.discipleLevel(s, first.id);
+
+  s.money = CONTENT.realms[1].requirement;
+  const r = State.breakthrough(s, always(0), false);
+  is("breakthrough：成功了", !!(r && r.success), true);
+  is("breakthrough：宗門弟子不會散去", Economy.discipleRecruited(s, first.id), true);
+  is("breakthrough：弟子道行也保留", Economy.discipleLevel(s, first.id), lvBefore);
+})();
+
+// 存檔容錯：宗門
+(() => {
+  const KEY = "idle-save-v1";
+  const backup = localStorage.getItem(KEY);
+  const tryLoad = (o) => { localStorage.setItem(KEY, JSON.stringify(o)); return State.load(); };
+  const d = CONTENT.disciples[0];
+  const cap = Economy.sectMaxCult();
+
+  let r = tryLoad({ disciples: { "根本沒這個弟子": { cult: 100 } } });
+  is("load：不認識的弟子被丟掉", r && Object.keys(r.disciples).length, 0);
+
+  r = tryLoad({ disciples: { [d.id]: { cult: cap * 999 } } });
+  eq("load：道行秒數夾到上限", r && r.disciples[d.id].cult, cap);
+
+  r = tryLoad({ disciples: { [d.id]: { cult: -50 } } });
+  is("load：負的道行退回 0", r && r.disciples[d.id].cult, 0);
+
+  r = tryLoad({ disciples: { [d.id]: "不是物件" } });
+  is("load：弟子資料不是物件 → 丟掉", r && !!r.disciples[d.id], false);
+
+  if (backup !== null) localStorage.setItem(KEY, backup); else localStorage.removeItem(KEY);
+})();
+
+// content.js：弟子設定合法 + 解鎖門檻湊得到
+(() => {
+  const EFFECTS = new Set(["click", "power", "allRate", "drop", "insightGain"]);
+  const ids = new Set();
+  let ok = true, note = "";
+  for (const d of CONTENT.disciples) {
+    if (ids.has(d.id)) { ok = false; note = `弟子 id 重複了：${d.id}`; break; }
+    ids.add(d.id);
+    if (!EFFECTS.has(d.effect)) { ok = false; note = `「${d.name}」的 effect「${d.effect}」程式不認得`; break; }
+    if (!(d.base > 0)) { ok = false; note = `「${d.name}」的 base 要大於 0`; break; }
+    if (!(d.cost > 0)) { ok = false; note = `「${d.name}」的 cost 要大於 0`; break; }
+    const rr = d.requireRank || 0;
+    if (rr < 0 || rr >= CONTENT.disciples.length) { ok = false; note = `「${d.name}」的 requireRank ${rr} 超出範圍`; break; }
+  }
+  log(ok, "content.js：弟子設定合法（effect 認得、base/cost/requireRank 合理）", note);
+
+  // 排序後每一階都要湊得到人，否則後面的弟子永遠解不開
+  const reqs = CONTENT.disciples.map((d) => d.requireRank || 0).sort((a, b) => a - b);
+  let reachable = true, badReq = "";
+  for (let i = 0; i < reqs.length; i++) {
+    if (reqs[i] > i) { reachable = false; badReq = `第 ${i + 1} 個弟子要求 requireRank ${reqs[i]}，但那時宗門等級最多 ${i}`; break; }
+  }
+  log(reachable, "content.js：弟子解鎖門檻湊得到（沒有永遠招不到的弟子）", badReq);
+
+  // 宗門稱號至少要有一個，sectRankTitle 才不會回 undefined
+  log(Array.isArray(CONTENT.sect.ranks) && CONTENT.sect.ranks.length > 0,
+      "content.js：宗門有稱號可顯示");
+})();
+
 // --- 武學抽卡 ------------------------------------------------
 (() => {
   const m = CONTENT.martials[0];

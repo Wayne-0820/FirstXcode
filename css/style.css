@@ -1089,6 +1089,94 @@ body {
   color: var(--violet);
 }
 
+/* --- 宗門 ------------------------------------------------- */
+
+#sect-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 2px 4px;
+}
+#sect-rank { font-size: 14px; font-weight: 800; color: var(--jade); }
+#sect-note { font-size: 11px; color: var(--text-dim); }
+
+.sect-row {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 11px 13px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  opacity: 0.5;
+}
+.sect-row.owned { opacity: 1; }
+.sect-row.owned {
+  border-color: rgba(94, 234, 212, 0.35);
+  background: rgba(94, 234, 212, 0.05);
+}
+.sect-row.locked-rank { opacity: 0.35; }
+
+.sect-icon { font-size: 28px; width: 36px; text-align: center; flex: 0 0 auto; }
+.sect-main { flex: 1; min-width: 0; }
+.sect-name { font-size: 14px; font-weight: 700; }
+.sect-quote {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-style: italic;
+  margin: 2px 0 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sect-effect { font-size: 11px; font-weight: 600; color: var(--jade); }
+
+/* 道行進度：招募後才出現，滿級時整條填滿 */
+.sect-bar {
+  margin-top: 5px;
+  height: 4px;
+  border-radius: 3px;
+  background: var(--line);
+  overflow: hidden;
+}
+.sect-bar-fill {
+  height: 100%;
+  width: 0;
+  background: var(--jade);
+  transition: width 0.3s ease;
+}
+
+.sect-side {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 5px;
+  min-width: 78px;
+}
+.sect-lv {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--jade);
+}
+.sect-lv.maxed { color: var(--gold); }
+.sect-act {
+  flex: 0 0 auto;
+  min-width: 84px;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: none;
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.sect-act.can { border-color: var(--gold-dark); color: var(--gold); }
+
 /* --- 武學抽卡 --------------------------------------------- */
 
 #stele {

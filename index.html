@@ -86,6 +86,7 @@
       <button class="tab" data-tab="gear">裝備<span class="tab-badge" id="badge-gear"></span></button>
       <button class="tab" data-tab="pet">靈寵<span class="tab-badge" id="badge-pet"></span></button>
       <button class="tab" data-tab="team">道侶<span class="tab-badge" id="badge-team"></span></button>
+      <button class="tab" data-tab="sect">宗門<span class="tab-badge" id="badge-sect"></span></button>
       <button class="tab" data-tab="martial">武學<span class="tab-badge" id="badge-martial"></span></button>
     </div>
     <div id="shop-bar">
@@ -132,6 +133,14 @@
 
     <!-- 道侶：最多帶三個 -->
     <div id="panel-team" class="panel hidden"></div>
+
+    <!-- 宗門：收弟子，道行隨時間自己長 -->
+    <div id="panel-sect" class="panel hidden">
+      <div id="sect-head">
+        <span id="sect-rank"></span>
+        <span id="sect-note"></span>
+      </div>
+    </div>
 
     <!-- 武學：抽卡 -->
     <div id="panel-martial" class="panel hidden">

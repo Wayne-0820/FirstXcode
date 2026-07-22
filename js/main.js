@@ -24,6 +24,9 @@ const Game = (() => {
       state = loaded;
       // 先把過期的增益清掉再結算 —— 不然一個 60 秒的增益會套用到整段離線時間
       State.expireBuffs(state, Date.now());
+      // 宗門先補：弟子的道行不吃離線上限，放多久長多久。
+      // 放在算離線收益之前，這段離線的產量就用「長大之後」的宗門加成算（對玩家寬鬆）。
+      State.advanceSect(state, Math.max(0, (Date.now() - state.lastSave) / 1000));
       // 上次存檔到現在的這段時間，一次補給玩家 —— 修煉和歷練都要算
       offlineSeconds = State.elapsedSinceSave(state, Date.now());
       offlineEarned = State.advance(state, offlineSeconds);
@@ -48,6 +51,7 @@ const Game = (() => {
       onSellJunk,
       onRecruit,
       onToggleTeam,
+      onRecruitDisciple,
       onDraw,
       onRedeem,
       onBuyAmountChange,
@@ -75,10 +79,13 @@ const Game = (() => {
 
     // 一律用時間戳記算差值，絕不累加幀數。
     // 這樣不管螢幕更新率是多少、有沒有掉幀，產量都一樣。
+    // rawDt 沒夾上限，專門給宗門用 —— 切到背景很久再回來，弟子的道行要照實補。
+    const rawDt = Math.max(0, (now - lastTick) / 1000);
     const dt = State.clampElapsed((now - lastTick) / 1000, state);
     lastTick = now;
 
     State.expireBuffs(state, now);
+    State.advanceSect(state, rawDt);
     const earned = State.advance(state, dt);
     const combat = State.advanceCombat(state, dt);
     State.tickFortune(state, now);
@@ -209,6 +216,7 @@ const Game = (() => {
   }
   function onRecruit(id) { State.recruitCompanion(state, id); }
   function onToggleTeam(id) { State.toggleTeam(state, id); }
+  function onRecruitDisciple(id) { State.recruitDisciple(state, id); }
 
   function onDraw(times) {
     const results = State.draw(state, times);

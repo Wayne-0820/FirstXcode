@@ -127,7 +127,9 @@ const Economy = (() => {
   function insightGain(state) {
     const next = nextRealm(state);
     if (!next || !(next.insight > 0)) return 0;
-    const bonus = companionMult(state, "insightGain") * martialTotal(state, "insightGain");
+    const bonus = companionMult(state, "insightGain")
+      * martialTotal(state, "insightGain")
+      * sectTotal(state, "insightGain");
     if (!(next.requirement > 0)) return Math.floor(next.insight * bonus);
     const ratio = Math.max(state.money / next.requirement, 1);
     return Math.max(1, Math.floor(next.insight * Math.sqrt(ratio) * bonus));
@@ -426,6 +428,85 @@ const Economy = (() => {
     return (state.team || []).length >= CONTENT.companionSlots;
   }
 
+  // --- 宗門 ------------------------------------------------
+  //
+  // 弟子跟其他系統最大的不同：加成會「自己隨時間長」。
+  // state.disciples 是 { 弟子 id: { cult: 累積修煉秒數 } }，
+  // 有這個 key 就代表招募過。道行等級是從 cult 推出來的純函式，
+  // 所以 test.html 驗算得到它，離線多久也只是 cult 多加了幾秒。
+
+  function discipleById(id) {
+    return CONTENT.disciples.find((d) => d.id === id) || null;
+  }
+
+  // 每升一級道行要幾秒（Lv1 在 0 秒）
+  function sectSecondsPerLevel() {
+    return CONTENT.sect.hoursPerLevel * 3600;
+  }
+
+  // 滿級需要累積多少秒 —— 超過這個數再存也沒意義，advanceSect 會夾在這裡
+  function sectMaxCult() {
+    return (CONTENT.sect.maxLevel - 1) * sectSecondsPerLevel();
+  }
+
+  // 弟子的道行等級。沒招募 = 0；招募後至少 Lv1，隨累積修煉時間往上爬。
+  function discipleLevel(state, id) {
+    const d = (state.disciples || {})[id];
+    if (!d) return 0;
+    const lv = 1 + Math.floor((d.cult || 0) / sectSecondsPerLevel());
+    return Math.min(lv, CONTENT.sect.maxLevel);
+  }
+
+  // 加成 = base × (1 + (道行 − 1) × perLevel)。Lv0（沒招募）= 0。
+  function discipleValue(disc, level) {
+    if (!disc || level < 1) return 0;
+    return disc.base * (1 + (level - 1) * CONTENT.sect.perLevel);
+  }
+
+  // 全宗門某種效果的加成總和 → 回傳倍率（1 = 沒有任何弟子加這種效果）
+  function sectTotal(state, effect) {
+    const owned = state.disciples || {};
+    let sum = 0;
+    for (const d of CONTENT.disciples) {
+      if (d.effect !== effect || !owned[d.id]) continue;
+      sum += discipleValue(d, discipleLevel(state, d.id));
+    }
+    return 1 + sum;
+  }
+
+  // 宗門等級 = 已招募的弟子數
+  function sectRank(state) {
+    const owned = state.disciples || {};
+    let n = 0;
+    for (const d of CONTENT.disciples) if (owned[d.id]) n++;
+    return n;
+  }
+
+  function sectRankTitle(rank) {
+    const list = CONTENT.sect.ranks;
+    return list[Math.min(Math.max(Math.floor(rank), 0), list.length - 1)];
+  }
+
+  function discipleRecruited(state, id) {
+    return !!(state.disciples || {})[id];
+  }
+
+  // 能不能招募：還沒收、而且宗門等級到了門檻。
+  // 門檻用「已收弟子數」是刻意的 —— 一次攤開八個弟子只會讓人眼花，
+  // 收一個解一個，宗門才有「一步步壯大」的感覺。
+  function discipleAvailable(state, disc) {
+    if (discipleRecruited(state, disc.id)) return false;
+    return sectRank(state) >= (disc.requireRank || 0);
+  }
+
+  // 距離下一級道行還要幾秒（滿級或沒招募回 0）
+  function discipleNextIn(state, id) {
+    if (!discipleRecruited(state, id)) return 0;
+    if (discipleLevel(state, id) >= CONTENT.sect.maxLevel) return 0;
+    const per = sectSecondsPerLevel();
+    return per - ((state.disciples[id].cult || 0) % per);
+  }
+
   // --- 歷練 ------------------------------------------------
 
   function layerAt(index) {
@@ -442,14 +523,16 @@ const Economy = (() => {
       * petBonus(state, "power")
       * equipTotal(state, "power")
       * companionMult(state, "power")
-      * martialTotal(state, "power");
+      * martialTotal(state, "power")
+      * sectTotal(state, "power");
   }
 
-  // 天才地寶的掉落倍率（靈寵 + 道侶 + 武學）
+  // 天才地寶的掉落倍率（靈寵 + 道侶 + 武學 + 宗門）
   function dropMultiplier(state) {
     return petBonus(state, "drop")
       * companionMult(state, "drop")
-      * martialTotal(state, "drop");
+      * martialTotal(state, "drop")
+      * sectTotal(state, "drop");
   }
 
   // 打得動這一層的魔王嗎？時限本質上就是一道戰力門檻。
@@ -475,7 +558,8 @@ const Economy = (() => {
       * buffMult(state, "allRate")
       * equipTotal(state, "rate")
       * companionMult(state, "allRate")
-      * martialTotal(state, "allRate");
+      * martialTotal(state, "allRate")
+      * sectTotal(state, "allRate");
   }
 
   // 全部加起來每秒產多少
@@ -507,7 +591,8 @@ const Economy = (() => {
       * techniqueMult(state, "click")
       * treasureMult(state, "click")
       * companionMult(state, "click")
-      * martialTotal(state, "click");
+      * martialTotal(state, "click")
+      * sectTotal(state, "click");
     return (flat + totalRate(state) * clickShare(state)) * buffMult(state, "click");
   }
 
@@ -631,6 +716,8 @@ const Economy = (() => {
     equipById, rarityById, pickRarity,
     refineMult, refineCost, equipBonus, equipTotal, isUpgrade, dropsOfLayer,
     companionById, companionMult, companionOwned, teamFull,
+    discipleById, discipleLevel, discipleValue, sectTotal, sectRank, sectRankTitle,
+    discipleRecruited, discipleAvailable, discipleNextIn, sectSecondsPerLevel, sectMaxCult,
     martialById, martialCategory, martialLevel, martialValue, martialTotal,
     martialMaxLevel, beadInfo, drawCost, hasUnlearned, pickMartial, pityLeft,
     layerAt,

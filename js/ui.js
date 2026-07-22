@@ -80,6 +80,7 @@ const UI = (() => {
     buildMaterialRows();
     buildSlots(handlers);
     buildCompanionRows(handlers);
+    buildSectRows(handlers);
     buildMartial(handlers);
     $("#sell-junk").addEventListener("click", handlers.onSellJunk);
 
@@ -162,7 +163,7 @@ const UI = (() => {
     for (const tab of document.querySelectorAll("#shop-tabs .tab")) {
       tab.classList.toggle("active", tab.dataset.tab === name);
     }
-    for (const p of ["gen", "tech", "trea", "battle", "gear", "pet", "team", "martial"]) {
+    for (const p of ["gen", "tech", "trea", "battle", "gear", "pet", "team", "sect", "martial"]) {
       $("#panel-" + p).classList.toggle("hidden", p !== name);
     }
     // 數量選擇只對修煉設施有意義：其他東西都是一次一個
@@ -174,6 +175,7 @@ const UI = (() => {
       : name === "gear" ? "打怪掉落・魔王必掉"
       : name === "pet" ? "只能帶一隻・餵天才地寶升級"
       : name === "team" ? `最多帶 ${CONTENT.companionSlots} 位・悟性招募`
+      : name === "sect" ? "悟性招募・弟子道行隨時間自漲"
       : name === "martial" ? "靈氣叩問・重複可升級"
       : "";
   }
@@ -541,6 +543,100 @@ const UI = (() => {
     return actionable;
   }
 
+  // --- 宗門 ------------------------------------------------
+
+  const sectRows = new Map();
+
+  // 弟子的 effect 也用同一套詞彙，但比道侶多了 click / insightGain，
+  // 所以另外列一份標籤（EFFECT_LABEL 是給靈寵用的，只有三種）。
+  const DISCIPLE_LABEL = {
+    power: "戰力", allRate: "靈氣產量", drop: "天才地寶",
+    click: "打坐所得", insightGain: "突破悟性",
+  };
+
+  function buildSectRows(handlers) {
+    const panel = $("#panel-sect");
+    for (const d of CONTENT.disciples) {
+      const row = document.createElement("div");
+      row.className = "sect-row";
+      row.innerHTML = `
+        <div class="sect-icon"></div>
+        <div class="sect-main">
+          <div class="sect-name"></div>
+          <div class="sect-quote"></div>
+          <div class="sect-effect"></div>
+          <div class="sect-bar"><div class="sect-bar-fill"></div></div>
+        </div>
+        <button class="sect-act"></button>`;
+      row.querySelector(".sect-icon").textContent = d.icon;
+      row.querySelector(".sect-name").textContent = d.name;
+      row.querySelector(".sect-quote").textContent = d.quote;
+      row.querySelector(".sect-act").addEventListener("click", () => handlers.onRecruitDisciple(d.id));
+      panel.appendChild(row);
+      sectRows.set(d.id, {
+        root: row,
+        effect: row.querySelector(".sect-effect"),
+        bar: row.querySelector(".sect-bar"),
+        fill: row.querySelector(".sect-bar-fill"),
+        act: row.querySelector(".sect-act"),
+      });
+    }
+  }
+
+  function renderSect(state) {
+    const rank = Economy.sectRank(state);
+    $("#sect-rank").textContent = `${CONTENT.sect.name} · ${Economy.sectRankTitle(rank)}`;
+    $("#sect-note").textContent = `弟子 ${rank}/${CONTENT.disciples.length}`;
+
+    const maxLv = CONTENT.sect.maxLevel;
+    const per = Economy.sectSecondsPerLevel();
+    let actionable = 0;
+
+    for (const d of CONTENT.disciples) {
+      const r = sectRows.get(d.id);
+      const label = DISCIPLE_LABEL[d.effect] || d.effect;
+      const recruited = Economy.discipleRecruited(state, d.id);
+      r.root.classList.toggle("owned", recruited);
+
+      if (recruited) {
+        r.root.classList.remove("locked-rank");
+        const lv = Economy.discipleLevel(state, d.id);
+        const maxed = lv >= maxLv;
+        const val = Economy.discipleValue(d, lv);
+        r.effect.textContent = maxed
+          ? `${label} +${Economy.formatPercent(val)} · 道行圓滿`
+          : `${label} +${Economy.formatPercent(val)} · 道行 Lv${lv}/${maxLv}`;
+        r.bar.classList.remove("hidden");
+        const nextIn = Economy.discipleNextIn(state, d.id);
+        r.fill.style.width = (maxed ? 100 : ((per - nextIn) / per) * 100) + "%";
+        r.act.className = "sect-act";
+        r.act.disabled = true;
+        // 顯示距離下一級還要多久 —— 這就是「值得回來看一眼」的理由
+        r.act.textContent = maxed ? "圓滿" : "下級 " + Economy.formatDuration(nextIn);
+        continue;
+      }
+
+      // 還沒招募：先給 Lv1 的預覽，並看宗門等級夠不夠解鎖
+      r.bar.classList.add("hidden");
+      r.effect.textContent = `${label} +${Economy.formatPercent(d.base)} 起`;
+
+      if (!Economy.discipleAvailable(state, d)) {
+        r.root.classList.add("locked-rank");
+        r.act.className = "sect-act";
+        r.act.disabled = true;
+        r.act.textContent = `宗門 Lv${d.requireRank}`;
+      } else {
+        r.root.classList.remove("locked-rank");
+        const can = state.insight >= d.cost;
+        if (can) actionable++;
+        r.act.className = "sect-act" + (can ? " can" : "");
+        r.act.disabled = !can;
+        r.act.textContent = `招募 ${CONTENT.insightCurrency.symbol}${d.cost}`;
+      }
+    }
+    return actionable;
+  }
+
   // --- 武學抽卡 --------------------------------------------
 
   const martialRows = new Map();
@@ -683,6 +779,7 @@ const UI = (() => {
     el.heroPower.textContent = "戰力 " + Economy.formatNumber(Economy.power(state));
     setBadge("#badge-gear", renderSlots(state) + renderBag(state, handlers));
     setBadge("#badge-team", renderCompanions(state));
+    setBadge("#badge-sect", renderSect(state));
     renderMartial(state);
     // 抽得起就亮一個點 —— 只提示「現在可以抽」，不用數字轟炸
     setBadge("#badge-martial", state.money >= Economy.drawCost(state, 1) ? 1 : 0, "·");

@@ -55,6 +55,8 @@ const State = (() => {
       bag: [],         // backpack：打到但還沒穿的
       companions: {},  // { companionId: true } 已招募
       team: [],        // 出戰的道侶（最多 companionSlots 個）
+      // 宗門
+      disciples: {},   // { discipleId: { cult: 累積修煉秒數 } } 有 key = 招募過
       // 武學抽卡
       martials: {},    // { martialId: 等級（勾玉數） }
       pity: 0,         // 連續幾抽沒抽到新武學（保底計數）
@@ -216,6 +218,19 @@ const State = (() => {
       state.team = state.team.slice(0, CONTENT.companionSlots);
     }
 
+    // --- 宗門 ---
+    // 只留 content.js 裡真的還存在的弟子；道行秒數夾在 0..滿級所需。
+    // 存太多的秒數沒有意義（滿級就到頂），夾住也讓存檔不會無限膨脹。
+    if (data.disciples && typeof data.disciples === "object") {
+      const cap = Economy.sectMaxCult();
+      for (const d of CONTENT.disciples) {
+        const saved = data.disciples[d.id];
+        if (!saved || typeof saved !== "object") continue;
+        const cult = Math.min(Math.max(num(saved.cult, 0), 0), cap);
+        state.disciples[d.id] = { cult };
+      }
+    }
+
     // --- 武學 ---
     const martialMax = Economy.martialMaxLevel();
     if (data.martials && typeof data.martials === "object") {
@@ -313,6 +328,24 @@ const State = (() => {
     state.money += earned;
     state.totalEarned += earned;
     return earned;
+  }
+
+  // 讓宗門的弟子修煉 seconds 秒 —— 就是把秒數加進每個弟子的道行。
+  //
+  // ★ 刻意不吃離線上限：離線的靈氣與歷練最多只算 8 小時（見 clampElapsed），
+  //   但弟子的道行「放多久就長多久」。放一週回來，弟子是真的長大了 ——
+  //   這正是「掛著就會變強」這個系統存在的理由。所以主迴圈和離線結算都
+  //   直接把「真實經過的秒數」丟進來，不經過 clampElapsed。
+  //   （呼叫端負責夾成非負，防使用者把時鐘往回調。）
+  function advanceSect(state, seconds) {
+    if (!(seconds > 0)) return;
+    const cap = Economy.sectMaxCult();
+    const owned = state.disciples || {};
+    for (const id of Object.keys(owned)) {
+      const d = owned[id];
+      if (!d || d.cult >= cap) continue; // 滿級了就不用再累積
+      d.cult = Math.min(cap, (d.cult || 0) + seconds);
+    }
   }
 
   // 突破境界。這是整個遊戲的主線，也是唯一會毀掉玩家資產的動作，
@@ -725,6 +758,19 @@ const State = (() => {
     return true;
   }
 
+  // --- 宗門 ------------------------------------------------
+
+  // 招募弟子。悟性不夠、宗門等級不到門檻、或已招募都回 false。
+  // 招進來就是 Lv1（cult 0），之後靠 advanceSect 自己長道行。
+  function recruitDisciple(state, id) {
+    const d = Economy.discipleById(id);
+    if (!d || !Economy.discipleAvailable(state, d)) return false;
+    if (state.insight < d.cost) return false;
+    state.insight -= d.cost;
+    state.disciples[id] = { cult: 0 };
+    return true;
+  }
+
   // --- 靈寵 ------------------------------------------------
 
   function equipPet(state, id) {
@@ -801,11 +847,11 @@ const State = (() => {
   return {
     create, save, load, clear,
     exportSave, importSave,
-    advance, advanceCombat, breakthrough,
+    advance, advanceSect, advanceCombat, breakthrough,
     buyTechnique, buyTreasure, buyConsumable,
     buyPet, feedPet, equipPet,
     rollEquipDrop, equipItem, unequipItem, refineItem, sellJunk,
-    recruitCompanion, toggleTeam,
+    recruitCompanion, toggleTeam, recruitDisciple,
     draw, redeem,
     tickFortune, claimFortune, scheduleFortune, expireBuffs,
     elapsedSinceSave, clampElapsed,
