@@ -112,6 +112,19 @@ const UI = (() => {
       handlers.onTransferImport($("#transfer-text").value));
     $("#transfer-copy").addEventListener("click", copyTransfer);
 
+    // 音效開關：🔊 / 🔇，點一下切換（切換本身就是使用者手勢，iOS 才出得了聲）
+    el.soundToggle = $("#sound-toggle");
+    const paintSound = () => {
+      const on = Sound.isEnabled();
+      el.soundToggle.textContent = on ? "🔊" : "🔇";
+      el.soundToggle.classList.toggle("muted", !on);
+    };
+    paintSound();
+    el.soundToggle.addEventListener("click", () => {
+      handlers.onToggleSound();
+      paintSound();
+    });
+
     setTab("gen");
   }
 

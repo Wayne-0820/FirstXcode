@@ -70,9 +70,29 @@ body {
 /* --- 標題 ------------------------------------------------- */
 
 #header {
+  position: relative;
   padding: 10px 16px 2px;
   text-align: center;
 }
+
+/* 音效開關：擺在標題列右上角，不搶版面 */
+#sound-toggle {
+  position: absolute;
+  top: 6px;
+  right: 12px;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--text-dim);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+#sound-toggle.muted { opacity: 0.55; }
 
 #game-title {
   font-size: 13px;

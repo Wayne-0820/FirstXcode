@@ -59,9 +59,16 @@ const Game = (() => {
       onBreakthroughConfirm,
       onTransferOpen,
       onTransferImport,
+      onToggleSound,
       onReset,
     };
     UI.build(handlers);
+
+    // iOS 要先有一次使用者手勢，音訊才能啟動。第一次點畫面時解鎖，之後就接上了。
+    // 用「捕獲階段」(true)，這樣它會搶在按鈕自己的 pointerdown 之前跑 ——
+    // 於是連「第一下打坐」都出得了聲，不會白按一下才開始響。
+    const unlockAudio = () => { Sound.unlock(); document.removeEventListener("pointerdown", unlockAudio, true); };
+    document.addEventListener("pointerdown", unlockAudio, true);
 
     if (offlineSeconds >= OFFLINE_POPUP_THRESHOLD_SEC && offlineEarned > 0) {
       UI.showOffline(offlineEarned, offlineSeconds, offlineCombat);
@@ -88,7 +95,16 @@ const Game = (() => {
     State.advanceSect(state, rawDt);
     const earned = State.advance(state, dt);
     const combat = State.advanceCombat(state, dt);
+    const hadFortune = !!state.fortune;
     State.tickFortune(state, now);
+
+    // 音效只給「即時」發生的事。離線那一大段結算走的是 init，那時音訊還沒
+    // 解鎖、本來也不會響 —— 這裡再用 dt 門檻擋一次，切背景很久回來也不連珠炮。
+    if (!hadFortune && state.fortune) Sound.fortune();
+    if (dt < OFFLINE_POPUP_THRESHOLD_SEC) {
+      if (combat.bosses.length) Sound.boss();
+      if (combat.pets.length) Sound.pet();
+    }
 
     // 分頁被切走 / 手機鎖屏時 requestAnimationFrame 會停住，
     // 回來的第一幀 dt 就是「整段背景時間」——所以背景收益不需要任何額外程式碼，
@@ -130,36 +146,42 @@ const Game = (() => {
     state.money += gain;
     state.totalEarned += gain;
     state.clicks++;
+    Sound.click();
     return gain;
   }
 
   function onBuyTechnique(id) {
-    State.buyTechnique(state, id);
+    if (State.buyTechnique(state, id)) Sound.confirm();
   }
 
   function onBuyTreasure(id) {
-    State.buyTreasure(state, id);
+    if (State.buyTreasure(state, id)) Sound.confirm();
   }
 
   function onBuyConsumable(id) {
-    State.buyConsumable(state, id);
+    if (State.buyConsumable(state, id)) Sound.confirm();
   }
 
   function onBuyPet(id) {
-    State.buyPet(state, id);
+    if (State.buyPet(state, id)) Sound.confirm();
   }
 
   function onFeedPet(id) {
-    State.feedPet(state, id);
+    if (State.feedPet(state, id)) Sound.upgrade();
   }
 
   function onEquipPet(id) {
-    State.equipPet(state, id);
+    if (State.equipPet(state, id)) Sound.blip();
   }
 
   function onClaimFortune() {
     const result = State.claimFortune(state, Date.now());
-    if (result) UI.showFortuneResult(result);
+    if (result) {
+      // 心魔（buff 且 value < 1）是唯一的壞結果，聲音要悶
+      const bad = result.outcome && result.outcome.value < 1;
+      Sound.claim(!bad);
+      UI.showFortuneResult(result);
+    }
   }
 
   function onBuy(genId) {
@@ -177,6 +199,7 @@ const Game = (() => {
 
     state.money -= cost;
     state.owned[genId] = owned + n;
+    Sound.buy();
   }
 
   function onBuyAmountChange(value) {
@@ -204,25 +227,33 @@ const Game = (() => {
     State.save(state);
     lastAutosave = Date.now();
 
-    if (result.success) UI.showRealmUp(result.realm, result.insight);
-    else UI.showFail(result.realm, lost);
+    if (result.success) {
+      Sound.breakthrough();
+      UI.showRealmUp(result.realm, result.insight);
+    } else {
+      Sound.fail();
+      UI.showFail(result.realm, lost);
+    }
   }
 
-  function onEquipItem(idx) { State.equipItem(state, idx); }
-  function onRefine(slotId) { State.refineItem(state, slotId); }
+  function onEquipItem(idx) { if (State.equipItem(state, idx)) Sound.blip(); }
+  function onRefine(slotId) { if (State.refineItem(state, slotId)) Sound.upgrade(); }
   function onSellJunk() {
     const n = State.sellJunk(state);
-    if (n > 0) UI.flashSaved();
+    if (n > 0) { UI.flashSaved(); Sound.blip(); }
   }
-  function onRecruit(id) { State.recruitCompanion(state, id); }
-  function onToggleTeam(id) { State.toggleTeam(state, id); }
-  function onRecruitDisciple(id) { State.recruitDisciple(state, id); }
+  function onRecruit(id) { if (State.recruitCompanion(state, id)) Sound.confirm(); }
+  function onToggleTeam(id) { if (State.toggleTeam(state, id)) Sound.blip(); }
+  function onRecruitDisciple(id) { if (State.recruitDisciple(state, id)) Sound.confirm(); }
+  function onToggleSound() { Sound.toggle(); }
 
   function onDraw(times) {
     const results = State.draw(state, times);
     if (!results) return; // 靈氣不夠，畫面上按鈕本來就是暗的
     State.save(state);
     lastAutosave = Date.now();
+    Sound.draw();
+    if (results.some((r) => r.isNew)) Sound.drawNew(); // 抽到新武學再疊一段顯化
     UI.showDrawResults(results);
   }
 
@@ -231,6 +262,7 @@ const Game = (() => {
     if (r.ok) {
       State.save(state);
       lastAutosave = Date.now();
+      Sound.confirm();
       UI.showRedeemHint(`兌換成功：叩問石碑 ${r.gained} 次`, true);
     } else {
       UI.showRedeemHint(r.reason, false);
