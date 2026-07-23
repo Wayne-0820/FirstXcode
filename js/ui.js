@@ -23,6 +23,43 @@ const UI = (() => {
     drop: "天才地寶",
   };
 
+  // 商店改成兩層：上面 3 個大頁，每頁點區塊再進到項目。
+  // panel 對應現有的 #panel-xxx；badge 對應現有 render 會更新的徽章 id
+  // （把徽章元素直接建在區塊卡片裡，render 端一行都不用改）。
+  const CATEGORIES = [
+    { id: "cultivate", name: "修行", items: [
+      { panel: "gen",  icon: "🌀", name: "修煉" },
+      { panel: "tech", icon: "📜", name: "功法", badge: "badge-tech" },
+      { panel: "trea", icon: "🔮", name: "法寶", badge: "badge-trea" },
+    ] },
+    { id: "adventure", name: "歷練", items: [
+      { panel: "battle", icon: "⚔️", name: "歷練" },
+      { panel: "gear",   icon: "🛡️", name: "裝備", badge: "badge-gear" },
+      { panel: "pet",    icon: "🐾", name: "靈寵", badge: "badge-pet" },
+    ] },
+    { id: "world", name: "江湖", items: [
+      { panel: "team",    icon: "💞", name: "道侶", badge: "badge-team" },
+      { panel: "sect",    icon: "🏯", name: "宗門", badge: "badge-sect" },
+      { panel: "martial", icon: "🎴", name: "武學", badge: "badge-martial" },
+    ] },
+  ];
+
+  const PANEL_HINT = {
+    tech: "靈氣購買・突破後散去",
+    trea: "悟性購買・永久保留",
+    battle: "掛著它自己會打・離線也在打",
+    gear: "打怪掉落・魔王必掉",
+    pet: "只能帶一隻・餵天才地寶升級",
+    team: `最多帶 ${CONTENT.companionSlots} 位・悟性招募`,
+    sect: "悟性招募・弟子道行隨時間自漲",
+    martial: "靈氣叩問・重複可升級",
+  };
+
+  const ALL_PANELS = CATEGORIES.flatMap((c) => c.items.map((it) => it.panel));
+
+  let activeCat = CATEGORIES[0].id; // 目前在哪個大頁
+  let openPanel = null;             // 進到哪個項目（null = 還在區塊選單）
+
   function $(sel) { return document.querySelector(sel); }
 
   // --- 建立畫面 --------------------------------------------
@@ -70,7 +107,7 @@ const UI = (() => {
 
     buildClickButton(handlers.onClick);
     buildBuyAmountPicker(handlers.onBuyAmountChange);
-    buildTabs();
+    buildShopNav(handlers);
     buildGeneratorRows(handlers.onBuy);
     buildItemRows("#panel-tech", CONTENT.techniques, techRows, handlers.onBuyTechnique,
       "多蓋幾座修煉設施，就會有對應的功法可以參悟。");
@@ -125,7 +162,7 @@ const UI = (() => {
       paintSound();
     });
 
-    setTab("gen");
+    updateShopView(); // 開場顯示「修行」大頁的區塊選單
   }
 
   function buildClickButton(onClick) {
@@ -166,31 +203,92 @@ const UI = (() => {
     }
   }
 
-  function buildTabs() {
+  // 建大頁切換、每個大頁的區塊格、以及返回鍵。
+  function buildShopNav(handlers) {
     for (const tab of document.querySelectorAll("#shop-tabs .tab")) {
-      tab.addEventListener("click", () => setTab(tab.dataset.tab));
+      tab.addEventListener("click", () => setCategory(tab.dataset.cat));
     }
+
+    const menu = $("#block-menu");
+    for (const cat of CATEGORIES) {
+      const grid = document.createElement("div");
+      grid.className = "block-grid";
+      grid.dataset.cat = cat.id;
+      for (const item of cat.items) {
+        const card = document.createElement("button");
+        card.className = "block-card";
+        // 徽章 id 直接放進卡片：render 端 setBadge("#badge-xxx") 照舊找得到
+        const badge = item.badge ? `<span class="block-badge" id="${item.badge}"></span>` : "";
+        card.innerHTML =
+          `${badge}<span class="block-icon">${item.icon}</span><span class="block-name">${item.name}</span>`;
+        card.addEventListener("click", () => openItem(item.panel));
+        grid.appendChild(card);
+      }
+      menu.appendChild(grid);
+    }
+
+    $("#shop-back").addEventListener("click", backToMenu);
   }
 
-  function setTab(name) {
+  function itemName(panel) {
+    for (const c of CATEGORIES) for (const it of c.items) if (it.panel === panel) return it.name;
+    return "";
+  }
+
+  // 換大頁：一律回到該頁的區塊選單（不記住上次進到哪個項目）
+  function setCategory(catId) {
+    if (!CATEGORIES.some((c) => c.id === catId)) return;
+    activeCat = catId;
+    openPanel = null;
+    updateShopView();
+  }
+
+  function openItem(panel) {
+    openPanel = panel;
+    updateShopView();
+  }
+
+  function backToMenu() {
+    openPanel = null;
+    updateShopView();
+  }
+
+  // 依 activeCat / openPanel 決定畫面：要嘛顯示區塊選單，要嘛顯示某個項目。
+  function updateShopView() {
+    const inItem = openPanel !== null;
+
     for (const tab of document.querySelectorAll("#shop-tabs .tab")) {
-      tab.classList.toggle("active", tab.dataset.tab === name);
+      tab.classList.toggle("active", tab.dataset.cat === activeCat);
     }
-    for (const p of ["gen", "tech", "trea", "battle", "gear", "pet", "team", "sect", "martial"]) {
-      $("#panel-" + p).classList.toggle("hidden", p !== name);
+    // 區塊選單只顯示當前大頁，且只在還沒進項目時
+    $("#block-menu").classList.toggle("hidden", inItem);
+    for (const grid of document.querySelectorAll("#block-menu .block-grid")) {
+      grid.classList.toggle("hidden", grid.dataset.cat !== activeCat);
     }
-    // 數量選擇只對修煉設施有意義：其他東西都是一次一個
-    el.buyAmount.classList.toggle("hidden", name !== "gen");
-    el.shopHint.textContent =
-      name === "tech" ? "靈氣購買・突破後散去"
-      : name === "trea" ? "悟性購買・永久保留"
-      : name === "battle" ? "掛著它自己會打・離線也在打"
-      : name === "gear" ? "打怪掉落・魔王必掉"
-      : name === "pet" ? "只能帶一隻・餵天才地寶升級"
-      : name === "team" ? `最多帶 ${CONTENT.companionSlots} 位・悟性招募`
-      : name === "sect" ? "悟性招募・弟子道行隨時間自漲"
-      : name === "martial" ? "靈氣叩問・重複可升級"
-      : "";
+    // 項目面板：只顯示打開的那個
+    for (const p of ALL_PANELS) {
+      $("#panel-" + p).classList.toggle("hidden", !(inItem && p === openPanel));
+    }
+    // 返回列與標題
+    $("#item-bar").classList.toggle("hidden", !inItem);
+    if (inItem) $("#item-title").textContent = itemName(openPanel);
+    // 提示列＋數量選擇只在進到項目時才有意義（數量只對修煉設施）
+    $("#shop-bar").classList.toggle("hidden", !inItem);
+    el.buyAmount.classList.toggle("hidden", openPanel !== "gen");
+    el.shopHint.textContent = inItem ? (PANEL_HINT[openPanel] || "") : "";
+  }
+
+  // 大頁徽章：底下任一項目有東西可買／可做，就在大頁上點個點提示
+  function renderCategoryBadges() {
+    for (const cat of CATEGORIES) {
+      let any = false;
+      for (const item of cat.items) {
+        if (!item.badge) continue;
+        const b = document.getElementById(item.badge);
+        if (b && b.textContent) { any = true; break; }
+      }
+      setBadge("#badge-cat-" + cat.id, any ? 1 : 0, "·");
+    }
   }
 
   function buildGeneratorRows(onBuy) {
@@ -816,6 +914,7 @@ const UI = (() => {
     renderBattle(state);
     renderPets(state);
     renderMaterials(state);
+    renderCategoryBadges(); // 各項目徽章都更新完了，再彙整到大頁
   }
 
   function renderGenerators(state, buyAmount) {
@@ -1247,7 +1346,7 @@ const UI = (() => {
   }
 
   return {
-    build, render, setTab,
+    build, render,
     showOffline, showBreakthroughConfirm, showRealmUp, showFail,
     showFortuneResult, showDrawResults, showRedeemHint,
     showTransfer, transferHint, flashSaved,

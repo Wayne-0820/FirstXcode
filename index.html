@@ -79,18 +79,23 @@
   </section>
 
   <section id="shop">
+    <!-- 三個大頁。9 個項目太多，收成三類，各自進去再選 -->
     <div id="shop-tabs">
-      <button class="tab active" data-tab="gen">修煉</button>
-      <button class="tab" data-tab="tech">功法<span class="tab-badge" id="badge-tech"></span></button>
-      <button class="tab" data-tab="trea">法寶<span class="tab-badge" id="badge-trea"></span></button>
-      <button class="tab" data-tab="battle">歷練</button>
-      <button class="tab" data-tab="gear">裝備<span class="tab-badge" id="badge-gear"></span></button>
-      <button class="tab" data-tab="pet">靈寵<span class="tab-badge" id="badge-pet"></span></button>
-      <button class="tab" data-tab="team">道侶<span class="tab-badge" id="badge-team"></span></button>
-      <button class="tab" data-tab="sect">宗門<span class="tab-badge" id="badge-sect"></span></button>
-      <button class="tab" data-tab="martial">武學<span class="tab-badge" id="badge-martial"></span></button>
+      <button class="tab active" data-cat="cultivate">修行<span class="tab-badge" id="badge-cat-cultivate"></span></button>
+      <button class="tab" data-cat="adventure">歷練<span class="tab-badge" id="badge-cat-adventure"></span></button>
+      <button class="tab" data-cat="world">江湖<span class="tab-badge" id="badge-cat-world"></span></button>
     </div>
-    <div id="shop-bar">
+
+    <!-- 區塊選單：顯示目前大頁的區塊，點一個進到該項目（區塊由 JS 建） -->
+    <div id="block-menu"></div>
+
+    <!-- 進到某個項目時才出現：返回鍵 + 標題 -->
+    <div id="item-bar" class="hidden">
+      <button id="shop-back">← 返回</button>
+      <span id="item-title"></span>
+    </div>
+
+    <div id="shop-bar" class="hidden">
       <span id="shop-hint"></span>
       <div id="buy-amount"></div>
     </div>

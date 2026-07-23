@@ -539,20 +539,21 @@ body {
 }
 #shop-tabs::-webkit-scrollbar { display: none; }
 
-/* 五個分頁要塞進 375px，字距得收緊 */
+/* 只有 3 個大頁了，平分寬度、置中 */
 .tab {
   position: relative;
-  flex: 0 0 auto;
-  padding: 8px 9px;
+  flex: 1 1 0;
+  padding: 9px 9px;
   border: none;
   border-bottom: 2px solid transparent;
   background: none;
   color: var(--text-dim);
   font-family: inherit;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 700;
-  letter-spacing: 0;
+  letter-spacing: 2px;
   white-space: nowrap;
+  text-align: center;
   cursor: pointer;
   touch-action: manipulation;
 }
@@ -597,6 +598,84 @@ body {
   display: flex;
   gap: 4px;
   margin-left: auto;
+}
+
+/* --- 兩層商店：區塊選單 + 返回列 -------------------------- */
+
+#block-menu {
+  padding: 12px 16px 4px;
+}
+
+.block-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.block-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 20px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--text);
+  font-family: inherit;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.block-card:active { background: var(--panel-hi); }
+
+.block-icon { font-size: 27px; line-height: 1; }
+.block-name { font-size: 13px; font-weight: 700; letter-spacing: 2px; }
+
+/* 區塊右上角的小徽章（沿用 render 端的 setBadge） */
+.block-badge {
+  position: absolute;
+  top: 7px;
+  right: 8px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--gold);
+  color: #2a1f00;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 16px;
+  text-align: center;
+}
+
+#item-bar {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 8px 16px 2px;
+  flex: 0 0 auto;
+}
+#shop-back {
+  flex: 0 0 auto;
+  padding: 5px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+#shop-back:active { background: var(--panel-hi); }
+#item-title {
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 3px;
+  color: var(--text);
 }
 
 .amount-btn {
